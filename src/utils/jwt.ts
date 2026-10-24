@@ -3,6 +3,9 @@ import { AppError } from "./app-error.js";
 
 const JWT_SECRET: string = process.env.JWT_SECRET || "default_fallback_secret";
 
+const JWT_EXPIRES_IN = (process.env.JWT_EXPIRES_IN || "1d") as any;
+const JWT_REMEMBER_EXPIRES_IN = (process.env.JWT_REMEMBER_EXPIRES_IN || "30d") as any;
+
 export interface DecodedToken {
   id: number;
   role: "user" | "admin";
@@ -13,7 +16,7 @@ export function signToken(
   role: "user" | "admin",
   ingatSaya: boolean = false
 ): string {
-  const expiresIn = ingatSaya ? "30d" : "1d";
+  const expiresIn = ingatSaya ? JWT_REMEMBER_EXPIRES_IN : JWT_EXPIRES_IN;
 
   return jwt.sign({ role }, JWT_SECRET, {
     subject: String(userId),

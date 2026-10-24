@@ -5,10 +5,21 @@ import { errorHandler } from "./middlewares/error.middleware.js";
 
 const app = express();
 
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(",").map((item) => item.trim())
+  : null;
+
 // Konfigurasi CORS lengkap untuk Web Browser, Flutter Web, Mobile, dan API clients
 app.use(
   cors({
-    origin: (_origin, callback) => callback(null, true),
+    origin: (origin, callback) => {
+      // Izinkan jika tanpa origin (mobile apps, Postman/curl) atau jika wildcard diset
+      if (!origin || !allowedOrigins || allowedOrigins.includes("*") || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`Origin ${origin} tidak diizinkan oleh CORS`));
+      }
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Accept", "X-Requested-With"],
