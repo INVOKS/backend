@@ -1,0 +1,1 @@
+ALTER TABLE `rooms` ADD `image_public_id` varchar(255);

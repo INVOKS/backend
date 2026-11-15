@@ -1,8 +1,8 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "04d5e021-affb-45d7-b6e4-cf1ac5284517",
-  "prevId": "d1615ca9-b92c-4a9c-9a3c-b9c990f51143",
+  "id": "d60e2cdb-468e-4baf-bddf-9dc951bc0a18",
+  "prevId": "8bb390c4-1cdb-419e-b9cc-24609ee3ee39",
   "tables": {
     "buildings": {
       "name": "buildings",
@@ -14,22 +14,22 @@
           "notNull": true,
           "autoincrement": true
         },
-        "nama": {
-          "name": "nama",
+        "name": {
+          "name": "name",
           "type": "varchar(100)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "kode": {
-          "name": "kode",
+        "code": {
+          "name": "code",
           "type": "varchar(20)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "deskripsi": {
-          "name": "deskripsi",
+        "description": {
+          "name": "description",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -64,10 +64,10 @@
         }
       },
       "uniqueConstraints": {
-        "buildings_nama_unique": {
-          "name": "buildings_nama_unique",
+        "buildings_name_unique": {
+          "name": "buildings_name_unique",
           "columns": [
-            "nama"
+            "name"
           ]
         }
       },
@@ -83,8 +83,8 @@
           "notNull": true,
           "autoincrement": true
         },
-        "nama": {
-          "name": "nama",
+        "name": {
+          "name": "name",
           "type": "varchar(100)",
           "primaryKey": false,
           "notNull": true,
@@ -126,10 +126,10 @@
         }
       },
       "uniqueConstraints": {
-        "facilities_nama_unique": {
-          "name": "facilities_nama_unique",
+        "facilities_name_unique": {
+          "name": "facilities_name_unique",
           "columns": [
-            "nama"
+            "name"
           ]
         }
       },
@@ -153,8 +153,8 @@
           "autoincrement": false,
           "default": "'user'"
         },
-        "nama_lengkap": {
-          "name": "nama_lengkap",
+        "full_name": {
+          "name": "full_name",
           "type": "varchar(255)",
           "primaryKey": false,
           "notNull": true,
@@ -176,59 +176,67 @@
         },
         "gender": {
           "name": "gender",
-          "type": "enum('perempuan','laki_laki')",
+          "type": "enum('female','male')",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "tanggal_lahir": {
-          "name": "tanggal_lahir",
+        "date_of_birth": {
+          "name": "date_of_birth",
           "type": "date",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "jurusan": {
-          "name": "jurusan",
+        "department": {
+          "name": "department",
           "type": "varchar(100)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "jenis_pengguna": {
-          "name": "jenis_pengguna",
+        "user_type": {
+          "name": "user_type",
           "type": "varchar(50)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "nim_nidn": {
-          "name": "nim_nidn",
+        "academic_id": {
+          "name": "academic_id",
           "type": "varchar(50)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "no_telp": {
-          "name": "no_telp",
+        "phone": {
+          "name": "phone",
           "type": "varchar(20)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "foto": {
-          "name": "foto",
+        "profile_image_url": {
+          "name": "profile_image_url",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "gedung_id": {
-          "name": "gedung_id",
+        "building_id": {
+          "name": "building_id",
           "type": "int",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
         },
         "created_at": {
           "name": "created_at",
@@ -278,51 +286,51 @@
           "notNull": true,
           "autoincrement": true
         },
-        "gedung_id": {
-          "name": "gedung_id",
+        "building_id": {
+          "name": "building_id",
           "type": "int",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "nama": {
-          "name": "nama",
+        "name": {
+          "name": "name",
           "type": "varchar(100)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "lantai": {
-          "name": "lantai",
+        "floor": {
+          "name": "floor",
           "type": "varchar(50)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "kapasitas_min": {
-          "name": "kapasitas_min",
+        "capacity_min": {
+          "name": "capacity_min",
           "type": "int",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": 1
         },
-        "kapasitas_max": {
-          "name": "kapasitas_max",
+        "capacity_max": {
+          "name": "capacity_max",
           "type": "int",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "deskripsi": {
-          "name": "deskripsi",
+        "description": {
+          "name": "description",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "foto": {
-          "name": "foto",
+        "image_url": {
+          "name": "image_url",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -330,11 +338,11 @@
         },
         "status": {
           "name": "status",
-          "type": "enum('tersedia','dipinjam','perbaikan')",
+          "type": "enum('available','borrowed','maintenance')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'tersedia'"
+          "default": "'available'"
         },
         "created_at": {
           "name": "created_at",
@@ -356,12 +364,12 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "rooms_gedung_id_buildings_id_fk": {
-          "name": "rooms_gedung_id_buildings_id_fk",
+        "rooms_building_id_buildings_id_fk": {
+          "name": "rooms_building_id_buildings_id_fk",
           "tableFrom": "rooms",
           "tableTo": "buildings",
           "columnsFrom": [
-            "gedung_id"
+            "building_id"
           ],
           "columnsTo": [
             "id"
@@ -405,8 +413,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "jumlah": {
-          "name": "jumlah",
+        "quantity": {
+          "name": "quantity",
           "type": "int",
           "primaryKey": false,
           "notNull": false,

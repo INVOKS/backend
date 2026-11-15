@@ -19,10 +19,10 @@ async function runTests() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        namaLengkap: "Budi Santoso",
+        fullName: "Budi Santoso",
         email: "budi.santoso@test.com",
         password: "Budi@Password123",
-        konfirmasiPassword: "Budi@Password123",
+        confirmPassword: "Budi@Password123",
       }),
     });
     const dataReg = await resReg.json();
@@ -45,10 +45,10 @@ async function runTests() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        namaLengkap: "Budi Santoso Duplicate",
+        fullName: "Budi Santoso Duplicate",
         email: "budi.santoso@test.com",
         password: "Budi@Password123",
-        konfirmasiPassword: "Budi@Password123",
+        confirmPassword: "Budi@Password123",
       }),
     });
     console.log("Status:", resDup.status);
@@ -60,10 +60,10 @@ async function runTests() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        namaLengkap: "Bu",
+        fullName: "Bu",
         email: "bukan-email",
         password: "lemah",
-        konfirmasiPassword: "beda",
+        confirmPassword: "beda",
       }),
     });
     console.log("Status:", resWeak.status);
@@ -77,7 +77,7 @@ async function runTests() {
       body: JSON.stringify({
         email: "budi.santoso@test.com",
         password: "Budi@Password123",
-        ingatSaya: true,
+        rememberMe: true,
       }),
     });
     const dataLogin: any = await resLogin.json();

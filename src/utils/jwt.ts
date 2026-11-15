@@ -14,9 +14,9 @@ export interface DecodedToken {
 export function signToken(
   userId: number,
   role: "user" | "admin",
-  ingatSaya: boolean = false
+  rememberMe: boolean = false
 ): string {
-  const expiresIn = ingatSaya ? JWT_REMEMBER_EXPIRES_IN : JWT_EXPIRES_IN;
+  const expiresIn = rememberMe ? JWT_REMEMBER_EXPIRES_IN : JWT_EXPIRES_IN;
 
   return jwt.sign({ role }, JWT_SECRET, {
     subject: String(userId),

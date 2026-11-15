@@ -22,3 +22,19 @@ export function authenticate(
   req.user = decoded;
   next();
 }
+
+export function requireAdmin(
+  req: Request,
+  _res: Response,
+  next: NextFunction
+): void {
+  if (!req.user) {
+    throw new AppError(401, "Pengguna belum terautentikasi");
+  }
+
+  if (req.user.role !== "admin") {
+    throw new AppError(403, "Akses terlarang: memerlukan hak akses administrator");
+  }
+
+  next();
+}

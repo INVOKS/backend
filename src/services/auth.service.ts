@@ -23,7 +23,7 @@ export async function registerUser(input: RegisterInput): Promise<SafeUser> {
   const [inserted] = await db
     .insert(users)
     .values({
-      namaLengkap: input.namaLengkap,
+      fullName: input.fullName,
       email: input.email,
       passwordHash,
       role: "user",
@@ -73,10 +73,14 @@ export async function loginUser(
     throw new AppError(401, "Email atau password salah");
   }
 
+  if (!existingUser.isActive) {
+    throw new AppError(403, "Akun Anda dinonaktifkan. Silakan hubungi administrator");
+  }
+
   const token = signToken(
     existingUser.id,
     existingUser.role,
-    input.ingatSaya
+    input.rememberMe
   );
 
   const { passwordHash: _, ...safeUser } = existingUser;

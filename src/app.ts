@@ -1,6 +1,9 @@
 import express from "express";
 import cors from "cors";
 import authRoutes from "./routes/auth.routes.js";
+import buildingRoutes from "./routes/building.routes.js";
+import facilityRoutes from "./routes/facility.routes.js";
+import roomRoutes from "./routes/room.routes.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
 
 const app = express();
@@ -52,7 +55,11 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
+// Rute API
 app.use("/api/auth", authRoutes);
+app.use("/api/buildings", buildingRoutes);
+app.use("/api/facilities", facilityRoutes);
+app.use("/api/rooms", roomRoutes);
 
 // Error handler diletakkan paling bawah setelah seluruh rute
 app.use(errorHandler);

@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const registerSchema = z
   .object({
-    namaLengkap: z
+    fullName: z
       .string()
       .min(3, "Nama lengkap minimal 3 karakter")
       .max(100, "Nama lengkap maksimal 100 karakter"),
@@ -21,11 +21,11 @@ export const registerSchema = z
         /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/,
         "Password harus memiliki setidaknya satu karakter khusus"
       ),
-    konfirmasiPassword: z.string().min(1, "Konfirmasi password wajib diisi"),
+    confirmPassword: z.string().min(1, "Konfirmasi password wajib diisi"),
   })
-  .refine((data) => data.password === data.konfirmasiPassword, {
+  .refine((data) => data.password === data.confirmPassword, {
     message: "Konfirmasi password tidak cocok dengan password",
-    path: ["konfirmasiPassword"],
+    path: ["confirmPassword"],
   });
 
 export type RegisterInput = z.infer<typeof registerSchema>;
@@ -37,7 +37,7 @@ export const loginSchema = z.object({
     .toLowerCase()
     .email("Format email tidak valid"),
   password: z.string().min(1, "Password wajib diisi"),
-  ingatSaya: z.boolean().default(false),
+  rememberMe: z.boolean().default(false),
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;

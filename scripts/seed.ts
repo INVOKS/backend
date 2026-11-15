@@ -18,16 +18,40 @@ async function seed() {
 
     if (existing && existing.length > 0) {
       await pool.query(
-        "UPDATE users SET role = 'admin', password_hash = ?, nama_lengkap = ? WHERE email = ?",
+        "UPDATE users SET role = 'admin', password_hash = ?, full_name = ? WHERE email = ?",
         [passwordHash, adminName, adminEmail]
       );
       console.log(`Akun admin '${adminEmail}' berhasil diperbarui.`);
     } else {
       await pool.query(
-        "INSERT INTO users (nama_lengkap, email, password_hash, role) VALUES (?, ?, ?, 'admin')",
+        "INSERT INTO users (full_name, email, password_hash, role) VALUES (?, ?, ?, 'admin')",
         [adminName, adminEmail, passwordHash]
       );
       console.log(`Akun admin '${adminEmail}' berhasil dibuat.`);
+    }
+
+    // 2. Seed Master Gedung (KP, BNI, Dieng) - Aman dijalankan berulang
+    const initialBuildings = [
+      { name: "KP", code: "KP", description: "Gedung Kuliah Bersama / KP" },
+      { name: "BNI", code: "BNI", description: "Gedung BNI" },
+      { name: "Dieng", code: "DNG", description: "Gedung Dieng" },
+    ];
+
+    for (const b of initialBuildings) {
+      const [bExisting]: any = await pool.query(
+        "SELECT id FROM buildings WHERE name = ?",
+        [b.name]
+      );
+
+      if (!bExisting || bExisting.length === 0) {
+        await pool.query(
+          "INSERT INTO buildings (name, code, description, is_active) VALUES (?, ?, ?, true)",
+          [b.name, b.code, b.description]
+        );
+        console.log(`Gedung '${b.name}' berhasil dibuat.`);
+      } else {
+        console.log(`Gedung '${b.name}' sudah ada (dilewati).`);
+      }
     }
   } catch (error) {
     console.error("Gagal menjalankan seed:", error);
