@@ -1,5 +1,6 @@
 import { Router } from "express";
 import * as roomController from "../controllers/room.controller.js";
+import * as roomBookingController from "../controllers/room-booking.controller.js";
 import { authenticate, requireAdmin } from "../middlewares/auth.middleware.js";
 import { validateBody } from "../middlewares/validate.middleware.js";
 import { uploadRoomImage } from "../middlewares/upload.middleware.js";
@@ -8,6 +9,7 @@ import { setRoomFacilitiesSchema } from "../validators/room.validator.js";
 const router = Router();
 
 // Endpoint untuk user & admin (harus login)
+router.get("/:id/availability", authenticate, roomBookingController.availability);
 router.get("/", authenticate, roomController.list);
 router.get("/:id", authenticate, roomController.detail);
 

@@ -12,6 +12,12 @@ export const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: Number(process.env.DB_CONNECTION_LIMIT || 10),
   queueLimit: 0,
+  timezone: "Z",
+});
+
+// Set session time_zone koneksi pool ke UTC (+00:00) agar kolom TIMESTAMP dibaca dan ditulis sebagai UTC murni
+pool.on("connection", (connection: any) => {
+  connection.query("SET time_zone = '+00:00'");
 });
 
 export { schema };

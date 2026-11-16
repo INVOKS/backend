@@ -3,3 +3,5 @@ export * from "./buildings.js";
 export * from "./facilities.js";
 export * from "./rooms.js";
 export * from "./room-facilities.js";
+export * from "./room-bookings.js";
+export * from "./room-booking-slots.js";

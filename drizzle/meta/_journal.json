@@ -29,6 +29,13 @@
       "when": 1794734935553,
       "tag": "0003_famous_blazing_skull",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1794744402448,
+      "tag": "0004_lyrical_hellfire_club",
+      "breakpoints": true
     }
   ]
 }
