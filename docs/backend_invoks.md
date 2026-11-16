@@ -13,11 +13,22 @@ Dokumen ini adalah panduan membangun database dan backend INVOKS secara bertahap
 |---|---|---|
 | 00 Cek kondisi awal | Selesai | |
 | 01 User & role | Selesai | Login/register berjalan; admin dibuat lewat seed |
-| 02 Gedung, ruangan, fasilitas, foto | Selesai | Foto sudah di Cloudinary; semua tes POST/PUT/GET lulus |
-| 03 Booking ruangan | **Berikutnya** | Putuskan dulu 3 hal di bagian 7 |
-| 04 sampai 09 | Belum | |
+| 02 Gedung, ruangan, fasilitas, foto | Selesai | Foto di Cloudinary; semua tes POST/PUT/GET lulus |
+| 03 Booking ruangan | Selesai | Multi-slot, anti-bentrok, availability harian dan bulanan; semua tes lulus (termasuk 5 request bersamaan) |
+| 04 Master barang | **Berikutnya** | |
+| 05 sampai 09 | Belum | |
 
 Langkah tambahan di luar nomor tahap yang sudah selesai: **pemindahan penyimpanan foto dari folder lokal `uploads/` ke Cloudinary** (lihat bagian 5).
+
+**Migrasi yang sudah diterapkan** (folder `backend/drizzle/`):
+
+| Migrasi | Isi |
+|---|---|
+| `0000_freezing_chameleon` | 5 tabel awal (`users`, `buildings`, `rooms`, `facilities`, `room_facilities`) dalam penamaan bahasa Inggris |
+| `0001_bumpy_piledriver` | `users.is_active` |
+| `0002_loving_cargill` | Perubahan Tahap 02 (kolom gedung, ruangan, fasilitas, constraint) |
+| `0003_famous_blazing_skull` | `rooms.image_public_id` |
+| `0004_lyrical_hellfire_club` | `room_bookings`, `room_booking_slots` |
 
 ## 1. Gambaran Fitur
 
@@ -40,19 +51,21 @@ Langkah tambahan di luar nomor tahap yang sudah selesai: **pemindahan penyimpana
 
 ## 2. Aturan Pengerjaan
 
-1. **Cek kondisi project dulu** sebelum mengubah apa pun: schema, migrasi, konfigurasi, dan auth. Samakan penamaan dan tipe ID dengan yang sudah ada (jangan paksa BIGINT).
-2. **Jangan buat ulang tabel yang sudah ada** (`users`, `buildings`, `rooms`, `facilities`, `room_facilities`). Cukup periksa dan lengkapi seperlunya.
+1. **Cek kondisi project dulu** sebelum mengubah apa pun: schema, migrasi, konfigurasi, dan auth. Samakan penamaan dan tipe ID dengan yang sudah ada (jangan paksa BIGINT; semua ID saat ini `int`).
+2. **Jangan buat ulang tabel yang sudah ada.** Cukup periksa dan lengkapi seperlunya.
 3. **Jangan rusak login/register**, bentuk JWT, hash password, dan middleware yang sudah jalan.
 4. **Kerjakan satu tahap sekali.** Selesaikan dan tinjau dulu sebelum lanjut.
 5. **Migrasi harus aman:** tinjau hasil migrasi sebelum diterapkan, backup database sebelum mengubah struktur, dan jangan pakai `push`, drop, reset, atau truncate tanpa alasan jelas.
 6. **Jangan hapus data lama.** Untuk kolom wajib baru di tabel berisi data: buat nullable dulu, isi datanya, baru jadikan NOT NULL jika perlu (contoh: `rooms.image_url`).
-7. Tipe FK harus sama dengan tipe PK, dan `ON DELETE` dipilih dengan sengaja. Untuk data yang punya riwayat, gunakan `is_active` (arsip), bukan hapus.
-8. Buat index dan unique constraint yang relevan. Unique constraint **tidak cukup** untuk mencegah bentrok jadwal; gunakan transaksi dan locking.
-9. Zona waktu `Asia/Jakarta`. Interval waktu `[start_at, end_at)`, jadi slot yang berakhir 10:00 tidak bentrok dengan slot mulai 10:00. Aturan penyimpanan waktu yang tepat ada di bagian 7.
+7. Tipe FK harus sama dengan tipe PK, dan `ON DELETE` dipilih dengan sengaja. Riwayat tidak boleh ikut terhapus (`restrict`); `cascade` hanya dari header ke anaknya sendiri (contoh: `room_bookings` ke `room_booking_slots`). Untuk data yang punya riwayat, gunakan `is_active` (arsip), bukan hapus.
+8. Buat index dan unique constraint yang relevan. Unique constraint **tidak cukup** untuk mencegah bentrok jadwal; gunakan transaksi dan locking, dengan unique constraint sebagai pengaman kedua.
+9. Zona waktu `Asia/Jakarta`. Interval waktu `[start_at, end_at)`, jadi slot yang berakhir 10:00 tidak bentrok dengan slot mulai 10:00. Aturan penyimpanan waktu ada di aturan 14 dan bagian 7.
 10. Jangan taruh `.env`, password database, JWT secret, atau token OTP di log, output, atau repository.
 11. **Jangan pakai Drizzle relational query (`db.query.x.findMany/findFirst` dengan `with:`).** Di MariaDB (XAMPP) query itu menghasilkan `left join lateral` yang ditolak (`ER_PARSE_ERROR`), dan `mode: "planetscale"` juga gagal (`ER_BAD_FIELD_ERROR`). Gunakan `select` biasa atau `join`, lalu gabungkan hasilnya di kode (contoh: `getRooms()` dan `getRoomById()` di `room.service.ts`).
 12. **Cleanup foto hanya untuk kegagalan penyimpanan.** Pembacaan data untuk respons (misalnya `getRoomById`) harus berada di luar blok `try` yang membungkus insert/update, supaya kegagalan membaca tidak menghapus foto yang sudah terhubung ke baris database.
-13. Jangan mengerjakan testing otomatis dulu. Verifikasi manual lewat Postman, dan jalankan `npm run typecheck` setiap selesai.
+13. Jangan mengerjakan testing otomatis dulu. Verifikasi manual lewat Postman dan phpMyAdmin, dan jalankan `npm run typecheck` setiap selesai.
+14. **Kolom `datetime` untuk jadwal memakai `mode: "string"`** dan bernilai waktu Jakarta (`"YYYY-MM-DD HH:mm:ss"`). Drizzle dengan mode default mengubah `Date` ke UTC lewat `toISOString()` sehingga jam bergeser tujuh jam, dan opsi `timezone` pada pool tidak mencegahnya. Semua perhitungan "sekarang", hari ini, dan status waktu memakai helper di `src/utils/datetime.ts`, bukan `new Date()` mentah.
+15. Sesi koneksi database diatur UTC (`timezone: "Z"` pada pool dan `SET time_zone = '+00:00'` pada tiap koneksi baru) supaya `created_at`/`updated_at` akurat. Respons API menampilkan keduanya dengan akhiran `Z`, jadi klien harus mengonversinya ke WIB saat ditampilkan.
 
 ## 3. Urutan Tahap
 
@@ -83,71 +96,128 @@ Tidak ada perubahan. Catat hal berikut:
 
 Hasilnya berupa daftar "yang sudah ada vs yang dibutuhkan" beserta risikonya.
 
-### Tahap 01 — User & role
-Kolom target `users` (sesuaikan dengan nama yang sudah ada):
+### Tahap 01 — User & role (selesai)
 
-`id`, `full_name`, `email` (unik), `password_hash`, `role` (`user`/`admin`, default `user`), `phone`, `profile_image_url`, `is_active`, `created_at`, `updated_at`.
+Kolom `users`: `id`, `role` (`user`/`admin`, default `user`), `full_name`, `email` (unik), `password_hash` (bcrypt cost 10), `gender` (enum `female`/`male`, nullable), `date_of_birth` (date, nullable), `department` (varchar 100, nullable), `user_type` (varchar 50, nullable; bukan enum database, nilai yang dipakai `student`/`lecturer`/`staff`), `academic_id` (varchar 50, nullable), `phone` (varchar 20, nullable), `profile_image_url` (text, nullable), `building_id` (int, nullable, belum dipakai, tanpa FK), `is_active`, `created_at`, `updated_at`. Semua kolom profil bersifat nullable.
 
-- Sebagian kolom profil Tahap 08 sudah ada di tabel (misalnya `gender` dan kolom tanggal). Periksa schema sebelum menambah kolom baru.
-- Jangan ganti nama kolom password, role, atau ID tanpa memperbarui semua tempat yang memakainya.
 - Register publik **selalu** menghasilkan `user`, walau client mengirim `admin`.
-- Admin dibuat lewat seed (`npm run db:seed`, membaca `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` dari `.env`) atau proses terkontrol, bukan registrasi terbuka.
-- Seed **tidak mengubah password** admin yang sudah ada. Jika `ADMIN_PASSWORD` diganti sesudah admin dibuat, hash lama di database tetap berlaku.
-- Role ada di dalam JWT. Setelah role seseorang diubah, user itu harus **login ulang** untuk mendapat token baru.
+- Admin dibuat lewat seed (`npm run db:seed`, membaca `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` dari `.env`) atau proses terkontrol, bukan registrasi terbuka. Seed juga mengisi gedung KP, BNI, Dieng.
+- Seed **tidak mengubah password** admin yang sudah ada dan aman dijalankan berulang.
+- JWT berisi `sub` (ID user, string) dan `role`, dengan opsi `rememberMe`. Setelah role seseorang diubah, user itu harus **login ulang** untuk mendapat token baru.
+- Akun `is_active = false` ditolak login (403). Middleware `requireAdmin` memberi 401 jika belum login dan 403 jika bukan admin.
 - Hak akses diputuskan backend lewat JWT, bukan oleh UI.
+
+Endpoint auth: `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/admin/login`, `GET /api/auth/me`.
 
 ### Tahap 02 — Gedung, ruangan, fasilitas, foto (selesai)
 
 | Tabel | Kolom penting | Aturan |
 |---|---|---|
-| `buildings` | id, name, code, description?, image_url?, is_active, timestamps | Nama unik; seed KP/BNI/Dieng tanpa duplikat |
-| `rooms` | id, building_id, room_code, name, floor, capacity_min, capacity_max, description, image_url, image_public_id, status, is_active, timestamps | UNIQUE(building_id, room_code); kapasitas > 0 dan `capacity_min` <= `capacity_max` |
+| `buildings` | id, name, code, description?, image_url?, is_active, timestamps | Nama dan kode unik; seed KP/BNI/Dieng (kode DNG) tanpa duplikat |
+| `rooms` | id, building_id, room_code, name, floor (varchar), capacity_min, capacity_max, description, image_url, image_public_id, status, is_active, timestamps | FK gedung `restrict`; UNIQUE(building_id, room_code); CHECK `capacity_min` > 0 dan `capacity_max` >= `capacity_min`; index (building_id, floor) |
 | `facilities` | id, name, icon, description?, timestamps | Nama unik |
-| `room_facilities` | id, room_id, facility_id, quantity, created_at | UNIQUE(room_id, facility_id); quantity > 0 |
+| `room_facilities` | id, room_id, facility_id, quantity, created_at, updated_at | UNIQUE(room_id, facility_id); CHECK quantity > 0 |
 
-- `rooms.status` default `available`. Pastikan nilainya tidak bertabrakan dengan `is_active`: `is_active` untuk arsip, `status` untuk kondisi ruangan.
+- `rooms.status` bernilai `available` (default), `borrowed`, atau `maintenance`. `is_active` untuk arsip, `status` untuk kondisi ruangan; keduanya punya peran berbeda.
 - Satu foto utama per ruangan: wajib saat tambah, bisa diganti saat edit. Tidak perlu tabel `room_images`.
-- `rooms.image_public_id` (varchar 255, nullable) menyimpan `public_id` Cloudinary persis seperti yang dikembalikan saat upload. Nilainya dipakai untuk menghapus foto lama. Untuk ruangan lama yang belum punya nilai ini, penghapusan foto lama dilewati.
+- `rooms.image_public_id` (varchar 255, nullable) menyimpan `public_id` Cloudinary persis seperti yang dikembalikan saat upload. Untuk ruangan lama yang belum punya nilai ini, penghapusan foto lama dilewati.
 - Lantai disimpan di `rooms.floor`. Filter memakai `building_id` + `floor`, tanpa tabel floors.
-- Field form-data untuk tambah/edit ruangan: `buildingId`, `roomCode`, `name`, `floor`, `capacityMax` (dan `capacityMin` jika diminta validator), `description`, dan file `image`.
+- Field form-data untuk tambah/edit ruangan: `buildingId`, `roomCode`, `name`, `floor`, `capacityMax` (dan `capacityMin`), `description`, dan file `image`.
 
-### Tahap 03 — Booking ruangan (multi-tanggal / multi-slot)
+Endpoint:
+
+| Method | Path | Akses | Keterangan |
+|---|---|---|---|
+| GET | `/api/buildings`, `/api/buildings/:id` | Login | User hanya melihat gedung aktif; admin boleh `?includeInactive=true` |
+| POST, PUT | `/api/buildings`, `/api/buildings/:id` | Admin | |
+| PATCH | `/api/buildings/:id/archive`, `/unarchive` | Admin | |
+| GET | `/api/facilities`, `/api/facilities/:id` | Login | |
+| POST, PUT, DELETE | `/api/facilities`, `/api/facilities/:id` | Admin | DELETE hanya jika belum dipakai ruangan |
+| GET | `/api/rooms`, `/api/rooms/:id` | Login | Filter `buildingId`, `floor`; user hanya melihat ruangan aktif di gedung aktif |
+| POST, PUT | `/api/rooms`, `/api/rooms/:id` | Admin | Multipart (lihat field di atas) |
+| PATCH | `/api/rooms/:id/archive`, `/unarchive` | Admin | |
+| PUT | `/api/rooms/:id/facilities` | Admin | Body `{ facilities: [{ facilityId, quantity }] }` |
+
+### Tahap 03 — Booking ruangan multi-tanggal / multi-slot (selesai)
 
 **`room_bookings`** (data kegiatan)
 
 | Kolom | Keterangan |
 |---|---|
 | `id` | PK, unik tiap transaksi (bukan `users.id`) |
-| `booking_code` | Kode unik yang mudah dibaca |
-| `user_id` | FK → users |
-| `room_id` | FK → rooms (satu booking = satu ruangan) |
+| `booking_code` | Unik, format `RB-YYYYMMDD-XXXX` (tanggal Jakarta, dibuat ulang jika bertabrakan) |
+| `user_id` | FK → users (`restrict`) |
+| `room_id` | FK → rooms (`restrict`; satu booking = satu ruangan) |
 | `activity_name`, `activity_description`, `organizer` | Info kegiatan |
 | `participant_count`, `pic_name`, `pic_phone` | Peserta dan PIC |
-| `status` | `booked` / `cancelled` |
-| `created_at`, `updated_at` | Timestamp |
+| `status` | `booked` / `cancelled`, default `booked` |
+| `created_at`, `updated_at` | Timestamp (UTC) |
+
+Index: `(room_id, status)` dan `user_id`.
 
 **`room_booking_slots`** (detail jadwal)
 
 | Kolom | Keterangan |
 |---|---|
 | `id` | PK |
-| `room_booking_id` | FK → room_bookings (bukan user_id) |
-| `room_id` | FK → rooms (usulan, lihat bagian 7) |
-| `start_at`, `end_at` | Tanggal + jam lengkap satu slot |
-| `created_at` | Timestamp |
+| `room_booking_id` | FK → room_bookings (`cascade`) |
+| `room_id` | FK → rooms (`restrict`) |
+| `start_at`, `end_at` | `datetime` mode string, nilai waktu Jakarta |
+| `created_at` | Timestamp (UTC) |
+
+Constraint: **UNIQUE(`room_id`, `start_at`)** sebagai pengaman kedua. Index `(room_booking_id, start_at)`.
 
 Kolom `status`, `cancelled_at`, `cancelled_by_user_id` untuk slot **ditunda** sampai aturan pembatalan diputuskan.
 
-Aturan:
-- Slot berdurasi 1 jam (07:00–19:00). Satu tanggal boleh pilih jam terpisah, satu booking boleh banyak tanggal.
-- Tidak boleh ada slot ganda dalam satu request atau bentrok dengan booking lain di ruangan yang sama.
-- Semua slot dalam satu submit **atomik**: kalau satu slot bentrok, tidak ada yang tersimpan.
-- Lock baris `rooms` sebelum cek bentrok, lalu simpan header dan slot dalam satu transaksi. Pastikan semua tabel memakai engine InnoDB.
-- Validasi tambahan: ruangan harus aktif dan berstatus tersedia, `participant_count` tidak melebihi `capacity_max`, slot tidak boleh di masa lalu, dan jumlah slot per request dibatasi (lihat bagian 7).
-- Index: `room_bookings(room_id, status)` dan `room_booking_slots(room_booking_id, start_at)`.
-- Status mendatang/berlangsung/selesai **dihitung dari waktu**, tidak perlu diupdate manual.
-- Query baca memakai `select`/`join` biasa, bukan `with:` (aturan 11).
+**Aturan:**
+- Slot tepat 1 jam, menit 00, jam mulai 07 sampai 18 (selesai paling lambat 19:00). Satu tanggal boleh pilih jam terpisah, satu booking boleh banyak tanggal.
+- Maksimal **50 slot** per request, minimal 1. Tidak boleh `startAt` ganda (termasuk beda format), tidak boleh di masa lalu, dan tidak boleh bentrok dengan booking lain di ruangan yang sama.
+- Semua slot dalam satu submit **atomik**: satu transaksi, `SELECT ... FOR UPDATE` pada baris `rooms`, cek bentrok terhadap booking berstatus `booked`, lalu insert header dan semua slot. Jika satu slot bentrok, tidak ada yang tersimpan (409 dengan daftar slot bentrok). Error duplicate-key dari UNIQUE juga dijawab 409, bukan 500. Cek bentrok dilakukan sebelum header dibuat, jadi ID booking tidak melompat setelah request gagal.
+- Ditolak (400) jika `rooms.is_active` false, `rooms.status` = `maintenance`, atau `buildings.is_active` false. Status `borrowed` **tidak** menolak, karena ketersediaan dihitung dari jadwal.
+- `participant_count` > 0 dan hanya dicek terhadap `capacity_max` (`capacity_min` tidak dipakai untuk validasi).
+- `user_id` selalu diambil dari JWT; `userId` di body diabaikan.
+- Status mendatang/berlangsung/selesai **dihitung dari waktu** (Jakarta) terhadap slot, tidak disimpan. Slot yang sedang berjalan dihitung `past` pada availability (berdasarkan jam mulai).
+- Query baca memakai `select`/`join` biasa, bukan `with:` (aturan 11). Pembacaan data respons di luar blok transaksi.
 - Contoh: Andi (`users.id=5`) booking pertama jadi `room_bookings.id=101`, booking berikutnya dapat ID lain, tetapi `user_id` tetap 5.
+- **Catatan pembatalan (pending):** karena `UNIQUE(room_id, start_at)`, slot yang dibatalkan harus dihapus atau ditangani khusus, jika tidak ruangan tetap terkunci.
+
+**Endpoint:**
+
+| Method | Path | Akses | Keterangan |
+|---|---|---|---|
+| POST | `/api/room-bookings` | User login | Ajukan booking |
+| GET | `/api/room-bookings/me` | User login | Riwayat milik sendiri, dengan slot |
+| GET | `/api/room-bookings/:id` | Pemilik atau admin | Detail |
+| GET | `/api/room-bookings` | Admin | Semua booking; filter `roomId`, `date`, `status` |
+| GET | `/api/rooms/:id/availability` | Login | Tepat satu dari `?date=YYYY-MM-DD` atau `?month=YYYY-MM` |
+
+**Format request `POST /api/room-bookings`:**
+
+```json
+{
+  "roomId": 8,
+  "activityName": "...",
+  "activityDescription": "...",
+  "organizer": "...",
+  "participantCount": 5,
+  "picName": "...",
+  "picPhone": "08...",
+  "slots": [ { "startAt": "2026-11-26T09:00" } ]
+}
+```
+
+`startAt` boleh `YYYY-MM-DDTHH:mm` atau `:ss`, dengan akhiran `+07:00` yang opsional. `Z` dan offset lain ditolak (400). `end_at` dihitung otomatis (+1 jam).
+
+**Availability:**
+- Mode `date`: 12 slot per hari dengan status `booked` / `past` / `available` (prioritas booked, lalu past). Disertai `bookable`, yang bernilai false jika ruangan nonaktif atau `maintenance`, atau gedung nonaktif (ruangan nonaktif bagi user biasa menghasilkan 404).
+- Mode `month`: per tanggal ada `totalSlots`, `bookedCount`, `availableCount`, dan `status` = `past` / `full` / `limited` / `open`. Maksimal 12 bulan ke depan. Satu query rentang per request.
+- Dua parameter sekaligus, tanpa parameter, tanggal tidak ada di kalender, format salah, atau lebih dari 12 bulan: 400 dengan pesan yang jelas.
+
+**Format respons waktu:** `startAt`/`endAt` slot berbentuk `YYYY-MM-DDTHH:mm:ss+07:00` (waktu Jakarta); `createdAt`/`updatedAt` berakhiran `Z` (UTC).
+
+**Bentuk error:** validasi `{ success: false, message: "Validasi data gagal", errors: { "slots.0.startAt": "..." } }`; aturan bisnis hanya `message` (400); bentrok 409 dengan `message` yang menyebut slot yang bentrok.
+
+**Verifikasi yang sudah lulus:** booking 1 slot dan multi-slot, bentrok (409, tidak ada baris baru), atomik (slot bebas ikut tidak tersimpan), validasi slot/peserta/status ruangan/gedung, akses antar user dan admin, availability harian dan bulanan (`past`, `limited`, `full`, `open`), `bookable` saat `maintenance`, input availability yang salah, dan **lima request bersamaan** ke slot yang sama (tiga kali berturut-turut: tepat satu 201 dan empat 409, satu baris slot, tanpa booking tanpa slot).
 
 ### Tahap 04 — Katalog dan unit barang
 
@@ -161,6 +231,7 @@ Aturan:
 - Gunakan `storage.service.ts` yang sudah ada (jangan membuat logika upload baru), dengan folder khusus barang, misalnya `invoks/items`.
 - Foto milik jenis barang; semua unit mewarisi foto itu (foto per unit tidak wajib).
 - Stok total = jumlah unit. Stok tersedia per tanggal dihitung dari jadwal dan kondisi unit, **bukan** kolom stok statis.
+- Tanpa `with:` (aturan 11). Kolom jadwal `datetime` mengikuti aturan 14.
 
 ### Tahap 05 — Peminjaman barang per kode unit
 
@@ -171,7 +242,7 @@ Aturan:
 | `id`, `borrowing_code` | PK dan kode unik |
 | `user_id` | FK → users |
 | `pic_name`, `pic_phone` | PIC |
-| `start_at`, `end_at` | Satu periode untuk semua unit |
+| `start_at`, `end_at` | Satu periode untuk semua unit (`datetime` mode string, waktu Jakarta) |
 | `status` | `booked` / `completed` / `cancelled` |
 | `completed_at`, timestamps | Catatan selesai |
 
@@ -192,7 +263,7 @@ Aturan:
 - Keranjang awal boleh di state Flutter (belum mereservasi apa pun).
 - Saat submit, backend mengecek ulang semua unit: lock baris `item_units` yang dipilih (urut ID), cek kondisi dan status aktif, cek bentrok periode, serta cek unit yang lewat jatuh tempo tetapi belum dikonfirmasi kembali. Lalu simpan header + semua unit secara atomik.
 - Satu unit gagal berarti seluruh transaksi gagal.
-- Query baca memakai `select`/`join` biasa, bukan `with:` (aturan 11).
+- Uji dengan beberapa request bersamaan seperti tes booking ruangan di Tahap 03.
 
 ### Tahap 06 — Pengembalian oleh admin
 
@@ -249,12 +320,13 @@ Hanya `return_overdue` yang sudah pasti. Sisanya hanya usulan; implementasikan s
 - Mulai dari notifikasi **in-app** saja (muncul di dalam aplikasi). Push notification/FCM ditambahkan belakangan setelah disetujui.
 - Jadwal dan frekuensi reminder dibuat **configurable** (misalnya lewat `system_settings`), jangan ditulis permanen di kode, karena belum diputuskan.
 - Notifikasi dibuat setelah proses utamanya berhasil, jadi kalau booking gagal, tidak ada notifikasi yang terbuat.
+- Job terjadwal butuh server yang selalu menyala (relevan saat deploy).
 
 **Belum diputuskan:** seberapa sering reminder keterlambatan dikirim (sekali, harian, tiap beberapa jam), apakah ada reminder sebelum jatuh tempo, dan jenis notifikasi tambahan di atas.
 
 ### Tahap 08 — Profil dan lupa password
 
-- Lengkapi kolom profil di `users` seperlunya: nama, email, telepon, identitas akademik, jurusan, tanggal lahir, jenis kelamin, foto profil. Periksa dulu kolom yang sudah ada.
+- Kolom profil di `users` sudah sebagian besar ada (nama, telepon, jurusan, tanggal lahir, jenis kelamin, jenis pengguna, identitas akademik, foto profil). Periksa schema sebelum menambah kolom baru.
 - Jika foto profil diunggah, pakai `storage.service.ts` dan simpan `public_id`-nya juga.
 - **`password_reset_tokens`** (jika belum ada): id, user_id, token_hash, expires_at, consumed_at, attempt_count, created_at.
 - OTP hanya disimpan dalam bentuk hash, dengan masa berlaku, batas percobaan, dan sekali pakai. Token tidak boleh masuk log.
@@ -279,12 +351,13 @@ File terkait: `src/config/cloudinary.ts`, `src/services/storage.service.ts`, `sr
 | `MAX_UPLOAD_MB` | Batas ukuran upload; default 5 jika kosong, bukan angka, atau di bawah 1; maksimum 10 (batas gambar paket Free) |
 
 **Aturan upload:**
-- Tipe file: jpg, png, webp. Penyimpanan sementara memakai multer `memoryStorage`, jadi tidak ada file yang ditulis ke disk.
+- Tipe file: jpg, png, webp. Penyimpanan sementara memakai multer `memoryStorage`, jadi tidak ada file yang ditulis ke disk. Field form-data bernama `image`.
 - Pesan error ukuran menyebut batas yang sedang berlaku. Error ukuran atau jumlah piksel dari Cloudinary dikembalikan sebagai 400, bukan 500.
 - `uploadImage(buffer, mimetype, folder)` mengembalikan `{ url, publicId }` (`secure_url` https). Folder ditentukan lewat `asset_folder` (akun memakai Dynamic folders), contohnya `invoks/rooms`.
 - `public_id` disimpan **persis** seperti respons upload, tidak disusun sendiri.
-- `deleteImage(publicId)` tidak melempar error fatal jika gagal; cukup mencatat log tanpa data sensitif. Disarankan memakai `invalidate: true` agar cache CDN ikut bersih, dan mencatat peringatan jika hasilnya bukan `ok`.
+- `deleteImage(publicId)` tidak melempar error fatal jika gagal; cukup mencatat log tanpa data sensitif. Disarankan memakai `invalidate: true` agar cache CDN ikut bersih, dan mencatat peringatan jika hasilnya bukan `ok` (belum dikerjakan).
 - `storage.service.ts` bersifat umum (tidak ada logika ruangan di dalamnya), dan dipakai ulang oleh barang (Tahap 04) serta foto profil (Tahap 08).
+- Kunci API Cloudinary hanya ada di backend. fe-web dan Flutter hanya menerima `imageUrl` dari backend.
 
 **Urutan operasi:**
 - **Tambah:** validasi data, upload foto, `insert` ke database. Jika `insert` gagal, hapus foto baru. Pembacaan respons dilakukan di luar blok `try`.
@@ -300,6 +373,7 @@ File terkait: `src/config/cloudinary.ts`, `src/services/storage.service.ts`, `sr
 |---|---|---|
 | users.id | room_bookings.user_id | 1:N |
 | rooms.id | room_bookings.room_id | 1:N |
+| rooms.id | room_booking_slots.room_id | 1:N |
 | buildings.id | rooms.building_id | 1:N |
 | rooms.id | room_facilities.room_id | 1:N |
 | facilities.id | room_facilities.facility_id | 1:N |
@@ -316,20 +390,34 @@ File terkait: `src/config/cloudinary.ts`, `src/services/storage.service.ts`, `sr
 
 **Kaidah ID:** `users.id` adalah identitas tetap akun. Setiap pengajuan baru menghasilkan `room_bookings.id` atau `item_borrowings.id` yang **baru**. Semua baris detail mengacu ke ID transaksi, bukan langsung ke `users.id`.
 
-## 7. Keputusan yang Harus Diambil Sebelum Tahap 03
+## 7. Keputusan Tahap 03 (final)
 
-Isi kolom "Keputusan" setelah ditentukan, lalu salin ke prompt Tahap 03.
+| Topik | Keputusan | Alasan |
+|---|---|---|
+| Penyimpanan waktu jadwal | Waktu Jakarta apa adanya, kolom `datetime` mode string (aturan 14) | Validasi jam 07:00–19:00 sederhana. Drizzle mode default mengubah `Date` ke UTC lewat `toISOString()`, dan opsi `timezone` pada pool tidak mencegahnya |
+| Timestamp `created_at`/`updated_at` | UTC (sesi koneksi diatur UTC), tampil dengan akhiran `Z` | Akurat; klien mengonversi ke WIB |
+| `room_id` di `room_booking_slots` | Ada, dengan `UNIQUE(room_id, start_at)` | Cek bentrok tanpa join, plus pengaman kedua di luar lock. Konsekuensi: slot yang dibatalkan harus dihapus atau ditangani khusus |
+| Batas slot per request | 50 | |
+| Peserta | Hanya `participant_count <= capacity_max` | `capacity_min` tidak dipakai validasi |
+| Status ruangan | Hanya `maintenance` yang menolak booking; `borrowed` tidak | Ketersediaan dihitung dari jadwal |
 
-| Topik | Pilihan | Saran | Keputusan |
-|---|---|---|---|
-| Penyimpanan waktu | (a) simpan waktu Jakarta apa adanya, koneksi mysql2/Drizzle diset `timezone: "+07:00"`; (b) simpan UTC, konversi ke Jakarta di semua validasi dan tampilan | (a), karena validasi jam 07:00–19:00 jadi sederhana | _pending_ |
-| `room_id` di `room_booking_slots` | Ada atau tidak. Jika ada, cek bentrok tanpa join, dan bisa ditambah `UNIQUE(room_id, start_at)` sebagai pengaman kedua di luar lock | Ada. Konsekuensinya, saat aturan pembatalan diputuskan, slot yang dibatalkan harus dihapus atau ditangani khusus | _pending_ |
-| Batas jumlah slot per request | Angka maksimum, misalnya 50 | 50 | _pending_ |
-| Peserta vs `capacity_min` | Hanya `participant_count <= capacity_max`, atau juga `>= capacity_min` | Mulai dari batas atas saja | _pending_ |
+## 8. Catatan untuk Frontend (fe-web dan Flutter)
 
-Catatan zona waktu: respons API saat ini menampilkan `createdAt` dengan akhiran `Z` (UTC) padahal nilainya waktu Jakarta (misalnya 18:17 WIB tampil sebagai `18:17:26.000Z`). Untuk timestamp biasa ini tidak masalah, tetapi untuk `start_at` dan `end_at` slot, jam bisa bergeser tujuh jam jika konversinya tidak konsisten. Putuskan aturannya dulu, lalu pastikan satu konfigurasi koneksi dipakai di semua tempat.
+- **Respons user** memakai field `fullName`, `phone`, `profileImageUrl`, `dateOfBirth`, `department`, `userType`, `academicId`, `buildingId`, `isActive`. Request register memakai `fullName`, `confirmPassword`, dan `rememberMe` (login). Nilai enum database: `female`/`male` (gender) dan `available`/`borrowed`/`maintenance` (status ruangan). `userType` bukan enum database (string bebas); frontend memakai `student`/`lecturer`/`staff`.
+- **Upload foto:** multipart dengan field `image`, maksimal 5 MB, jpg/png/webp.
+- **Waktu booking:** kirim tiap slot satu jam (`startAt` berformat `YYYY-MM-DDTHH:mm`). Tampilan boleh menggabungkan slot berurutan (misalnya 13.00 - 17.00), tetapi request tetap per jam. Ambil jam langsung dari teks respons (`substring`) agar tidak bergantung zona waktu perangkat, dan konversi `createdAt` (UTC) ke WIB.
+- **Warna kalender bulanan:** `open` (putih), `limited` (kuning), `full` (merah), `past` (abu/nonaktif). Slot abu di layar pilih jam berarti `booked` atau `past`.
+- **Alamat backend di emulator Android:** `10.0.2.2` (bukan `localhost`).
 
-## 8. Cara Memakai Dokumen Ini
+## 9. Perbaikan Opsional (belum dikerjakan)
+
+- Respons 409 booking sebaiknya juga memuat daftar terstruktur slot bentrok (misalnya `conflicts`), selain `message`.
+- Respons `/api/room-bookings/me` terlalu padat (user, ruangan, gedung lengkap per booking); bisa diringkas.
+- Bentuk error masih dua macam (`errors` objek vs `message` saja); pertimbangkan menyeragamkan.
+- `deleteImage` memakai `invalidate: true` dan mencatat hasil selain `ok`.
+- `users.building_id` belum punya FK dan belum dipakai; `rooms.status = borrowed` kemungkinan tidak terpakai.
+
+## 10. Cara Memakai Dokumen Ini
 
 1. Simpan di `backend/docs/backend_invoks.md` (atau ganti namanya jika sudah ada README lain).
 2. Mulai dari tahap yang berstatus "Berikutnya" di bagian 0, lalu kerjakan satu tahap per giliran sesuai urutan di bagian 3.
