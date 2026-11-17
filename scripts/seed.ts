@@ -17,11 +17,7 @@ async function seed() {
     const passwordHash = await bcrypt.hash(adminPassword, saltRounds);
 
     if (existing && existing.length > 0) {
-      await pool.query(
-        "UPDATE users SET role = 'admin', password_hash = ?, full_name = ? WHERE email = ?",
-        [passwordHash, adminName, adminEmail]
-      );
-      console.log(`Akun admin '${adminEmail}' berhasil diperbarui.`);
+      console.log(`Akun admin '${adminEmail}' sudah ada (dilewati).`);
     } else {
       await pool.query(
         "INSERT INTO users (full_name, email, password_hash, role) VALUES (?, ?, ?, 'admin')",
@@ -51,6 +47,29 @@ async function seed() {
         console.log(`Gedung '${b.name}' berhasil dibuat.`);
       } else {
         console.log(`Gedung '${b.name}' sudah ada (dilewati).`);
+      }
+    }
+
+    // 3. Seed Master Kategori Barang (Elektronik, Furnitur) - Aman dijalankan berulang
+    const initialCategories = [
+      { name: "Elektronik", slug: "elektronik" },
+      { name: "Furnitur", slug: "furnitur" },
+    ];
+
+    for (const c of initialCategories) {
+      const [cExisting]: any = await pool.query(
+        "SELECT id FROM item_categories WHERE slug = ? OR name = ?",
+        [c.slug, c.name]
+      );
+
+      if (!cExisting || cExisting.length === 0) {
+        await pool.query(
+          "INSERT INTO item_categories (name, slug) VALUES (?, ?)",
+          [c.name, c.slug]
+        );
+        console.log(`Kategori '${c.name}' berhasil dibuat.`);
+      } else {
+        console.log(`Kategori '${c.name}' sudah ada (dilewati).`);
       }
     }
   } catch (error) {

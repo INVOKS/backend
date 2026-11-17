@@ -57,6 +57,15 @@ export async function updateFacility(
 ): Promise<Facility> {
   await getFacilityById(id);
 
+  const hasFields =
+    input.name !== undefined ||
+    input.icon !== undefined ||
+    input.description !== undefined;
+
+  if (!hasFields) {
+    throw new AppError(400, "Tidak ada data yang diubah");
+  }
+
   if (input.name) {
     const duplicate = await db.query.facilities.findFirst({
       where: eq(facilities.name, input.name),

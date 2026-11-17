@@ -49,7 +49,13 @@ export async function uploadImage(
  */
 export async function deleteImage(publicId: string): Promise<void> {
   try {
-    await cloudinary.uploader.destroy(publicId);
+    const res = await cloudinary.uploader.destroy(publicId, {
+      resource_type: "image",
+      invalidate: true,
+    });
+    if (res?.result !== "ok") {
+      console.warn(`Peringatan penghapusan gambar Cloudinary: status '${res?.result ?? "unknown"}' untuk public_id '${publicId}'`);
+    }
   } catch (err) {
     // Log tanpa menampilkan konten sensitif (API key/secret tidak ada di err message)
     console.error("Gagal menghapus gambar dari Cloudinary:", (err as Error).message ?? err);

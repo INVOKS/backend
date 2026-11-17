@@ -5,3 +5,6 @@ export * from "./rooms.js";
 export * from "./room-facilities.js";
 export * from "./room-bookings.js";
 export * from "./room-booking-slots.js";
+export * from "./item-categories.js";
+export * from "./items.js";
+export * from "./item-units.js";

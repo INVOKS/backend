@@ -239,6 +239,22 @@ export async function updateRoom(
 ): Promise<Room> {
   const currentRoom = await getRoomById(id);
 
+  const hasFields =
+    input.buildingId !== undefined ||
+    input.roomCode !== undefined ||
+    input.name !== undefined ||
+    input.floor !== undefined ||
+    input.capacityMin !== undefined ||
+    input.capacityMax !== undefined ||
+    input.description !== undefined ||
+    input.status !== undefined ||
+    input.isActive !== undefined ||
+    file !== undefined;
+
+  if (!hasFields) {
+    throw new AppError(400, "Tidak ada data yang diubah");
+  }
+
   const targetBuildingId = input.buildingId ?? currentRoom.buildingId;
   const targetRoomCode = input.roomCode ?? currentRoom.roomCode;
 

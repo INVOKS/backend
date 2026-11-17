@@ -33,3 +33,6 @@ export const uploadRoomImage = multer({
     fileSize: MAX_UPLOAD_MB * 1024 * 1024,
   },
 });
+
+export const uploadItemImage = uploadRoomImage;
+

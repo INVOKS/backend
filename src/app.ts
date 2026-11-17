@@ -5,6 +5,9 @@ import buildingRoutes from "./routes/building.routes.js";
 import facilityRoutes from "./routes/facility.routes.js";
 import roomRoutes from "./routes/room.routes.js";
 import roomBookingRoutes from "./routes/room-booking.routes.js";
+import itemCategoryRoutes from "./routes/item-category.routes.js";
+import itemRoutes from "./routes/item.routes.js";
+import itemUnitRoutes from "./routes/item-unit.routes.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
 
 const app = express();
@@ -62,6 +65,9 @@ app.use("/api/buildings", buildingRoutes);
 app.use("/api/facilities", facilityRoutes);
 app.use("/api/rooms", roomRoutes);
 app.use("/api/room-bookings", roomBookingRoutes);
+app.use("/api/item-categories", itemCategoryRoutes);
+app.use("/api/items", itemRoutes);
+app.use("/api/item-units", itemUnitRoutes);
 
 // Error handler diletakkan paling bawah setelah seluruh rute
 app.use(errorHandler);
