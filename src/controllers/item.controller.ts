@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import * as itemService from "../services/item.service.js";
+import * as itemBorrowingService from "../services/item-borrowing.service.js";
 import { AppError } from "../utils/app-error.js";
 import {
   createItemSchema,
@@ -8,6 +9,7 @@ import {
   updateUnitSchema,
   itemFilterSchema,
 } from "../validators/item.validator.js";
+import { itemUnitAvailabilityQuerySchema } from "../validators/item-borrowing.validator.js";
 
 function normalizeBodyKeys(body: unknown): unknown {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
@@ -142,4 +144,35 @@ export async function updateUnit(req: Request, res: Response): Promise<void> {
     data,
   });
 }
+
+export async function getUnitAvailability(
+  req: Request,
+  res: Response
+): Promise<void> {
+  const itemUnitId = Number(req.params.id);
+  const isAdmin = req.user?.role === "admin";
+  const query = itemUnitAvailabilityQuerySchema.parse(req.query);
+
+  let data;
+  if (query.date) {
+    data = await itemBorrowingService.getItemUnitAvailabilityByDate(
+      itemUnitId,
+      query.date,
+      !isAdmin
+    );
+  } else if (query.month) {
+    data = await itemBorrowingService.getItemUnitAvailabilityByMonth(
+      itemUnitId,
+      query.month,
+      !isAdmin
+    );
+  }
+
+  res.status(200).json({
+    success: true,
+    message: "Data ketersediaan unit barang berhasil diambil",
+    data,
+  });
+}
+
 

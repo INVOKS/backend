@@ -144,6 +144,12 @@ export function generateBookingCode(): string {
   return `RB-${today}-${rand}`;
 }
 
+export function generateBorrowingCode(): string {
+  const today = getTodayJakartaDateString().replace(/-/g, "");
+  const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return `IB-${today}-${rand}`;
+}
+
 export type TimeStatus = "upcoming" | "ongoing" | "completed" | "cancelled";
 
 export function calculateBookingTimeStatus(

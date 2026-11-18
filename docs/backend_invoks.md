@@ -15,8 +15,10 @@ Dokumen ini adalah panduan membangun database dan backend INVOKS secara bertahap
 | 01 User & role | Selesai | Login/register berjalan; admin dibuat lewat seed |
 | 02 Gedung, ruangan, fasilitas, foto | Selesai | Foto di Cloudinary; semua tes POST/PUT/GET lulus |
 | 03 Booking ruangan | Selesai | Multi-slot, anti-bentrok, availability harian dan bulanan; semua tes lulus (termasuk 5 request bersamaan) |
-| 04 Master barang | **Berikutnya** | |
-| 05 sampai 09 | Belum | |
+| 04 Master barang | Selesai | Katalog, unit fisik, foto Cloudinary; semua tes manual lulus (CRUD, validasi, hak akses, filter, arsip, penambahan unit atomik) |
+| 05 Peminjaman barang | Selesai | Multi-unit, multi-slot 1 jam 07:00–19:00, availability harian & bulanan per unit, anti-bentrok + cek overdue, uji 5 request bersamaan lulus |
+| 06 Pengembalian barang | **Berikutnya** | Konfirmasi admin per unit (pakai tabel tahap 05) |
+| 07 sampai 09 | Belum | |
 
 Langkah tambahan di luar nomor tahap yang sudah selesai: **pemindahan penyimpanan foto dari folder lokal `uploads/` ke Cloudinary** (lihat bagian 5).
 
@@ -29,6 +31,9 @@ Langkah tambahan di luar nomor tahap yang sudah selesai: **pemindahan penyimpana
 | `0002_loving_cargill` | Perubahan Tahap 02 (kolom gedung, ruangan, fasilitas, constraint) |
 | `0003_famous_blazing_skull` | `rooms.image_public_id` |
 | `0004_lyrical_hellfire_club` | `room_bookings`, `room_booking_slots` |
+| `0005_huge_masque` | Tabel Tahap 04: `item_categories`, `items`, `item_units` |
+| `0006_clumsy_amphibian` | Tabel Tahap 05 awal: `item_borrowings`, `item_borrowing_units` |
+| `0007_silky_the_hood` | Penyesuaian Tahap 05: `item_borrowing_slots`, constraint `UNIQUE(item_unit_id, start_at)`, hapus kolom `start_at`/`end_at` pada `item_borrowings` |
 
 ## 1. Gambaran Fitur
 
@@ -76,7 +81,7 @@ Langkah tambahan di luar nomor tahap yang sudah selesai: **pemindahan penyimpana
 | 02 | Gedung & ruangan | `buildings`, `rooms`, `facilities`, `room_facilities` | 01 |
 | 03 | Booking ruangan | `room_bookings`, `room_booking_slots` | 02 |
 | 04 | Master barang | `item_categories`, `items`, `item_units` | 01 |
-| 05 | Peminjaman barang | `item_borrowings`, `item_borrowing_units` | 04 |
+| 05 | Peminjaman barang | `item_borrowings`, `item_borrowing_units`, `item_borrowing_slots` | 04 |
 | 06 | Pengembalian | Konfirmasi admin per unit (pakai tabel tahap 05) | 05 |
 | 07 | Notifikasi & reminder | `notifications`, `reminder_logs` | 06 |
 | 08 | Profil & reset password | `password_reset_tokens` | 01 |
@@ -123,6 +128,7 @@ Endpoint auth: `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/aut
 - `rooms.image_public_id` (varchar 255, nullable) menyimpan `public_id` Cloudinary persis seperti yang dikembalikan saat upload. Untuk ruangan lama yang belum punya nilai ini, penghapusan foto lama dilewati.
 - Lantai disimpan di `rooms.floor`. Filter memakai `building_id` + `floor`, tanpa tabel floors.
 - Field form-data untuk tambah/edit ruangan: `buildingId`, `roomCode`, `name`, `floor`, `capacityMax` (dan `capacityMin`), `description`, dan file `image`.
+- PUT gedung, ruangan, dan fasilitas yang tidak membawa data apa pun ditolak 400 sebelum menyentuh database (untuk ruangan, sebelum upload foto), supaya tidak ada error `No values to set` dan tidak ada foto yatim.
 
 Endpoint:
 
@@ -219,7 +225,7 @@ Kolom `status`, `cancelled_at`, `cancelled_by_user_id` untuk slot **ditunda** sa
 
 **Verifikasi yang sudah lulus:** booking 1 slot dan multi-slot, bentrok (409, tidak ada baris baru), atomik (slot bebas ikut tidak tersimpan), validasi slot/peserta/status ruangan/gedung, akses antar user dan admin, availability harian dan bulanan (`past`, `limited`, `full`, `open`), `bookable` saat `maintenance`, input availability yang salah, dan **lima request bersamaan** ke slot yang sama (tiga kali berturut-turut: tepat satu 201 dan empat 409, satu baris slot, tanpa booking tanpa slot).
 
-### Tahap 04 — Katalog dan unit barang
+### Tahap 04 — Katalog dan unit barang (selesai)
 
 - **`item_categories`**: id, name (unik), slug (unik), timestamps. Seed **Elektronik** dan **Furnitur**.
 - **`items`** (satu kartu katalog): id, category_id, name, description, specifications (JSON, opsional), image_url (wajib untuk data baru), image_public_id (nullable), is_active, timestamps.
@@ -227,43 +233,130 @@ Kolom `status`, `cancelled_at`, `cancelled_by_user_id` untuk slot **ditunda** sa
 
 Aturan:
 - **Tambah barang:** item + foto + satu atau lebih kode unit. Urutannya: validasi data, upload foto ke Cloudinary, simpan item dan semua unit dalam satu transaksi database, dan jika transaksi gagal, hapus foto dari Cloudinary. Pembacaan data respons dilakukan di luar blok `try` tersebut.
-- **Edit barang:** ubah data/foto, kelola unit, dan tambah kode baru tanpa menduplikasi row `items`. Foto lama dihapus **setelah** update database berhasil.
+- **Edit barang:** ubah data/foto lewat PUT parsial. Unit dikelola lewat endpoint terpisah (`POST /api/items/:id/units` untuk menambah, `PUT /api/item-units/:id` untuk mengubah), tanpa menduplikasi row `items`. Foto lama dihapus **setelah** update database berhasil.
 - Gunakan `storage.service.ts` yang sudah ada (jangan membuat logika upload baru), dengan folder khusus barang, misalnya `invoks/items`.
 - Foto milik jenis barang; semua unit mewarisi foto itu (foto per unit tidak wajib).
 - Stok total = jumlah unit. Stok tersedia per tanggal dihitung dari jadwal dan kondisi unit, **bukan** kolom stok statis.
 - Tanpa `with:` (aturan 11). Kolom jadwal `datetime` mengikuti aturan 14.
 
-### Tahap 05 — Peminjaman barang per kode unit
+**Endpoint:**
 
-**`item_borrowings`** (header)
+| Method | Path | Akses | Keterangan |
+|---|---|---|---|
+| GET | `/api/item-categories` | Login | Daftar kategori |
+| GET | `/api/items` | Login | Filter `categoryId`, `q`; admin boleh `?includeInactive=true`; berisi `totalUnits` dan `availableUnits` |
+| GET | `/api/items/:id` | Login | Detail dan unit; user hanya melihat unit aktif berkondisi `good`, admin melihat semua unit |
+| POST | `/api/items` | Admin | Multipart: `categoryId`, `name`, `description`, `specifications` (JSON), `units` (JSON array), `image` |
+| PUT | `/api/items/:id` | Admin | Multipart, parsial; field `units` ditolak 400 |
+| PATCH | `/api/items/:id/archive`, `/unarchive` | Admin | |
+| POST | `/api/items/:id/units` | Admin | **Hanya JSON** (bukan form-data): `{ "units": [ { "inventoryCode": "...", "condition": "good", "notes": "..." } ] }`; sukses 201 |
+| PUT | `/api/item-units/:id` | Admin | `condition`, `isActive`, `notes` (parsial) |
+
+**Perilaku yang sudah diverifikasi:**
+- `specifications` dikembalikan sebagai objek.
+- `totalUnits` = semua unit aktif; `availableUnits` = unit aktif dan `good`. Ini stok fisik, **bukan** ketersediaan per tanggal (Tahap 05 menghitungnya dari jadwal).
+- PUT parsial: field yang tidak dikirim tidak berubah.
+- Semua PUT update (barang, unit barang, gedung, ruangan, fasilitas) menolak request tanpa data dengan 400 "Tidak ada data yang diubah". Pengecekan berjalan setelah cek 404 dan sebelum upload foto.
+- `PUT /api/items/:id` yang berisi field `units` ditolak 400; gunakan `POST /api/items/:id/units`.
+- Kode inventaris: ganda dalam satu request = 400 (validasi, tidak membedakan huruf besar/kecil); sudah dipakai = 409; semua unit disimpan atomik (satu gagal berarti tidak ada yang tersimpan).
+- Barang yang diarsip: unit baru ditolak 400; user biasa mendapat 404, admin boleh melihatnya.
+- `categoryId` yang tidak ada = 404. Format data salah (JSON, tipe file, nama kosong) = 400.
+- Ganti foto: foto lama dihapus setelah update database berhasil.
+- Mengubah kondisi unit hanya menyentuh `item_units`; `updatedAt` item tidak ikut berubah.
+
+### Tahap 05 — Peminjaman barang per kode unit (selesai)
+
+**`item_borrowings`** (header kegiatan peminjaman)
 
 | Kolom | Keterangan |
 |---|---|
-| `id`, `borrowing_code` | PK dan kode unik |
-| `user_id` | FK → users |
-| `pic_name`, `pic_phone` | PIC |
-| `start_at`, `end_at` | Satu periode untuk semua unit (`datetime` mode string, waktu Jakarta) |
-| `status` | `booked` / `completed` / `cancelled` |
-| `completed_at`, timestamps | Catatan selesai |
+| `id` | PK, unik tiap transaksi |
+| `borrowing_code` | Unik, format `IB-YYYYMMDD-XXXX` (tanggal Jakarta, dibuat ulang jika bertabrakan) |
+| `user_id` | FK → users (`restrict`) |
+| `activity_name` | Nama kegiatan (wajib, min 1, max 255) |
+| `pic_name`, `pic_phone` | Penanggung jawab kegiatan |
+| `status` | `booked` / `completed` / `cancelled`, default `booked` |
+| `completed_at` | Catatan waktu selesai (datetime mode string Jakarta, diisi saat semua unit kembali) |
+| `created_at`, `updated_at` | Timestamp (UTC) |
 
-**`item_borrowing_units`** (unit yang dipinjam)
+Index: `(user_id)` dan `(status)`.
+
+**`item_borrowing_units`** (detail unit fisik yang dipinjam)
 
 | Kolom | Keterangan |
 |---|---|
 | `id` | PK |
-| `item_borrowing_id` | FK → item_borrowings |
-| `item_unit_id` | FK → item_units (unit spesifik) |
-| `returned_at` | NULL = belum dikembalikan |
-| `returned_by_admin_id` | FK → users, NULL |
-| `return_condition`, `return_notes` | Kondisi saat kembali (opsional) |
-| `created_at` | Timestamp |
+| `item_borrowing_id` | FK → item_borrowings (`cascade`) |
+| `item_unit_id` | FK → item_units (`restrict`) |
+| `returned_at` | `datetime` mode string Jakarta; NULL = belum dikembalikan |
+| `returned_by_admin_id` | FK → users (`restrict`), NULL sampai dikonfirmasi admin |
+| `return_condition` | `good` / `damaged` / `maintenance` (kondisi saat kembali) |
+| `return_notes` | Catatan kondisi fisik saat kembali |
+| `created_at` | Timestamp (UTC) |
 
-Aturan:
-- UNIQUE `(item_borrowing_id, item_unit_id)` hanya mencegah unit ganda dalam satu transaksi, **bukan** bentrok antar transaksi.
-- Keranjang awal boleh di state Flutter (belum mereservasi apa pun).
-- Saat submit, backend mengecek ulang semua unit: lock baris `item_units` yang dipilih (urut ID), cek kondisi dan status aktif, cek bentrok periode, serta cek unit yang lewat jatuh tempo tetapi belum dikonfirmasi kembali. Lalu simpan header + semua unit secara atomik.
-- Satu unit gagal berarti seluruh transaksi gagal.
-- Uji dengan beberapa request bersamaan seperti tes booking ruangan di Tahap 03.
+Constraint: **UNIQUE(`item_borrowing_id`, `item_unit_id`)** mencegah unit ganda dalam satu transaksi. Index: `(item_unit_id, returned_at)`.
+
+**`item_borrowing_slots`** (detail jadwal per unit fisik)
+
+| Kolom | Keterangan |
+|---|---|
+| `id` | PK |
+| `item_borrowing_id` | FK → item_borrowings (`cascade`) |
+| `item_borrowing_unit_id` | FK → item_borrowing_units (`cascade`) |
+| `item_unit_id` | FK → item_units (`restrict`) |
+| `start_at`, `end_at` | `datetime` mode string, nilai waktu Jakarta |
+| `created_at` | Timestamp (UTC) |
+
+Constraint: **UNIQUE(`item_unit_id`, `start_at`)** sebagai pengaman kedua dari bentrok fisik. Index: `(item_borrowing_id, start_at)`, `(item_borrowing_unit_id, start_at)`.
+
+**Aturan & Logika Bisnis:**
+- Multi-unit: 1 s.d. 20 unit fisik per transaksi. Tidak boleh ada `itemUnitId` duplikat dalam satu request (400).
+- Multi-slot: 1 s.d. 50 slot per unit. Slot tepat 1 jam, menit 00, jam operasional 07:00–18:00 (selesai paling lambat 19:00 WIB). Tidak boleh ada duplikat slot dalam satu unit dan tidak boleh di masa lalu.
+- Submit atomik: seluruh proses berjalan dalam satu transaksi. Pernyataan pertama wajib mengunci baris unit dengan `SELECT ... FROM item_units WHERE id IN (...) ORDER BY id ASC FOR UPDATE` untuk mencegah deadlock.
+- Validasi kondisi fisik: setiap unit wajib memiliki `unit.isActive === true` dan `unit.condition === "good"`, serta katalog induk `items.isActive === true` (400 jika tidak memenuhi).
+- Cek unit overdue: unit yang masih memiliki peminjaman aktif (`item_borrowings.status = 'booked'` dan `item_borrowing_units.returned_at IS NULL`) di mana slot terakhirnya sudah lewat dari waktu sekarang (`MAX(end_at) < nowJakarta`) ditolak (409) karena terlambat dikembalikan dan belum dikonfirmasi oleh admin.
+- Cek bentrok jadwal: slot berstatus `booked` dan `returned_at IS NULL` yang bertumpukan langsung ditolak (409) sebelum insert dilakukan.
+- Retry kode peminjaman unik: insert header mencoba ulang hingga 5 kali jika terjadi bentrok `borrowing_code`. Pelanggaran constraint slot `item_borrowing_slots_unit_start_unique` ditangkap lewat helper `isDuplicateKeyError` dan dikembalikan sebagai 409 (bukan 500).
+- Query baca tanpa relational query `with:` (Aturan 11). Pembacaan respons dilakukan di luar blok transaksi.
+
+**Availability Unit Barang:**
+- Mode `date`: 12 slot per hari dengan status `booked` / `past` / `available` (prioritas `booked`, lalu `past`). Disertai `bookable`, bernilai false jika unit tidak aktif, kondisi bukan `good`, katalog induk tidak aktif, atau unit sedang overdue.
+- Mode `month`: per tanggal ada `totalSlots`, `bookedCount`, `availableCount`, dan status `past` / `full` / `limited` / `open`. Maksimal 12 bulan ke depan.
+- User non-admin mendapat 404 jika unit atau katalog induknya tidak aktif.
+
+**Endpoint:**
+
+| Method | Path | Akses | Keterangan |
+|---|---|---|---|
+| POST | `/api/item-borrowings` | User login | Ajukan peminjaman multi-unit & multi-slot (201) |
+| GET | `/api/item-borrowings/me` | User login | Daftar peminjaman milik user sendiri |
+| GET | `/api/item-borrowings` | Admin | Seluruh peminjaman barang; filter `status`, `itemUnitId`, `date` |
+| GET | `/api/item-borrowings/:id` | Pemilik / Admin | Detail peminjaman beserta unit dan slot |
+| GET | `/api/item-units/:id/availability` | User login | Ketersediaan unit barang per hari (`?date=`) atau per bulan (`?month=`) |
+
+**Format request `POST /api/item-borrowings`:**
+
+```json
+{
+  "activityName": "Praktikum Jaringan Komputer",
+  "picName": "Budi Santoso",
+  "picPhone": "08123456789",
+  "units": [
+    {
+      "itemUnitId": 18,
+      "slots": [
+        { "startAt": "2026-12-10T10:00" },
+        { "startAt": "2026-12-10T11:00" }
+      ]
+    }
+  ]
+}
+```
+
+**Verifikasi yang sudah lulus:**
+- Seluruh skenario fungsional via Postman (pengajuan peminjaman 1 unit dan multi-unit, validasi waktu operasional, pencegahan slot di masa lalu, pencegahan slot duplikat/bentrok, deteksi unit overdue, availability harian dan bulanan, serta hak akses pemilik/admin).
+- **Uji konkurensi 5 request bersamaan** ke unit barang dan slot waktu yang sama persis: tepat 1 request berhasil 201 Created dan 4 request lainnya tertolak 409 Conflict secara aman, tidak ada error 500, tepat 1 baris slot tersimpan di database, dan 0 header peminjaman yatim.
+- Seluruh tabel peminjaman barang (`item_borrowings`, `item_borrowing_units`, `item_borrowing_slots`) dibersihkan kembali ke 0 baris setelah pengujian.
 
 ### Tahap 06 — Pengembalian oleh admin
 
@@ -272,7 +365,7 @@ Tidak perlu tabel baru. Gunakan `returned_at`, `returned_by_admin_id`, `return_c
 - Hanya admin yang boleh mengonfirmasi barang sudah diterima.
 - Pengembalian **per unit**: jika 2 dari 3 unit kembali, header belum selesai. Header jadi `completed` hanya jika **semua** unit sudah kembali.
 - Update dilakukan atomik; konfirmasi dua kali harus ditolak dengan aman.
-- Unit yang kembali dalam kondisi rusak tidak langsung tersedia lagi.
+- Unit yang kembali dalam kondisi rusak tidak langsung tersedia lagi. Apakah `item_units.condition` ikut diubah dalam transaksi yang sama diputuskan di tahap ini (usulan: ya).
 - **Overdue** dihitung, bukan disimpan: `end_at` sudah lewat, `returned_at` masih kosong, dan transaksi belum dibatalkan.
 - Pencatatan serah-terima awal (`handed_over_at`) belum diputuskan.
 
@@ -355,7 +448,7 @@ File terkait: `src/config/cloudinary.ts`, `src/services/storage.service.ts`, `sr
 - Pesan error ukuran menyebut batas yang sedang berlaku. Error ukuran atau jumlah piksel dari Cloudinary dikembalikan sebagai 400, bukan 500.
 - `uploadImage(buffer, mimetype, folder)` mengembalikan `{ url, publicId }` (`secure_url` https). Folder ditentukan lewat `asset_folder` (akun memakai Dynamic folders), contohnya `invoks/rooms`.
 - `public_id` disimpan **persis** seperti respons upload, tidak disusun sendiri.
-- `deleteImage(publicId)` tidak melempar error fatal jika gagal; cukup mencatat log tanpa data sensitif. Disarankan memakai `invalidate: true` agar cache CDN ikut bersih, dan mencatat peringatan jika hasilnya bukan `ok` (belum dikerjakan).
+- `deleteImage(publicId)` tidak melempar error fatal jika gagal; cukup mencatat log tanpa data sensitif. Fungsi ini memakai `invalidate: true` agar cache CDN ikut bersih, dan mencatat `console.warn` jika hasilnya bukan `ok`.
 - `storage.service.ts` bersifat umum (tidak ada logika ruangan di dalamnya), dan dipakai ulang oleh barang (Tahap 04) serta foto profil (Tahap 08).
 - Kunci API Cloudinary hanya ada di backend. fe-web dan Flutter hanya menerima `imageUrl` dari backend.
 
@@ -408,13 +501,15 @@ File terkait: `src/config/cloudinary.ts`, `src/services/storage.service.ts`, `sr
 - **Waktu booking:** kirim tiap slot satu jam (`startAt` berformat `YYYY-MM-DDTHH:mm`). Tampilan boleh menggabungkan slot berurutan (misalnya 13.00 - 17.00), tetapi request tetap per jam. Ambil jam langsung dari teks respons (`substring`) agar tidak bergantung zona waktu perangkat, dan konversi `createdAt` (UTC) ke WIB.
 - **Warna kalender bulanan:** `open` (putih), `limited` (kuning), `full` (merah), `past` (abu/nonaktif). Slot abu di layar pilih jam berarti `booked` atau `past`.
 - **Alamat backend di emulator Android:** `10.0.2.2` (bukan `localhost`).
+- **Barang:** `PUT /api/items/:id` bersifat parsial dan menolak field `units`; unit baru ditambah lewat `POST /api/items/:id/units` dengan body JSON (bukan form-data). `availableUnits` adalah stok fisik, bukan ketersediaan per tanggal.
 
 ## 9. Perbaikan Opsional (belum dikerjakan)
 
 - Respons 409 booking sebaiknya juga memuat daftar terstruktur slot bentrok (misalnya `conflicts`), selain `message`.
 - Respons `/api/room-bookings/me` terlalu padat (user, ruangan, gedung lengkap per booking); bisa diringkas.
 - Bentuk error masih dua macam (`errors` objek vs `message` saja); pertimbangkan menyeragamkan.
-- `deleteImage` memakai `invalidate: true` dan mencatat hasil selain `ok`.
+- PUT form-data tanpa field pada gedung, ruangan, dan fasilitas membalas "Validasi data gagal" dengan `errors` kosong, sedangkan barang memakai "Tidak ada data yang diubah"; seragamkan bersama bentuk error lainnya.
+- Foto barang 14 (Laptop ASUS) dan kemungkinan beberapa ruangan masih di akun Cloudinary lama; penghapusan foto lama dari akun baru gagal diam-diam (hanya `console.warn`).
 - `users.building_id` belum punya FK dan belum dipakai; `rooms.status = borrowed` kemungkinan tidak terpakai.
 
 ## 10. Cara Memakai Dokumen Ini

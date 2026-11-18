@@ -8,3 +8,6 @@ export * from "./room-booking-slots.js";
 export * from "./item-categories.js";
 export * from "./items.js";
 export * from "./item-units.js";
+export * from "./item-borrowings.js";
+export * from "./item-borrowing-units.js";
+export * from "./item-borrowing-slots.js";
