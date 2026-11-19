@@ -35,4 +35,5 @@ export const uploadRoomImage = multer({
 });
 
 export const uploadItemImage = uploadRoomImage;
+export const uploadAvatarImage = uploadRoomImage;
 

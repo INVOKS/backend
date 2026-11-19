@@ -13,3 +13,4 @@ export * from "./item-borrowing-units.js";
 export * from "./item-borrowing-slots.js";
 export * from "./notifications.js";
 export * from "./reminder-logs.js";
+export * from "./password-reset-tokens.js";

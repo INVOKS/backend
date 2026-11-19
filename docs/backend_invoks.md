@@ -19,8 +19,8 @@ Dokumen ini adalah panduan membangun database dan backend INVOKS secara bertahap
 | 05 Peminjaman barang | Selesai | Multi-unit, multi-slot 1 jam 07:00–19:00, availability harian & bulanan per unit, anti-bentrok + cek overdue, uji 5 request bersamaan lulus |
 | 06 Pengembalian barang | Selesai | Konfirmasi pengembalian per unit oleh admin, sinkronisasi kondisi master unit, pelunasan otomatis ke completed, properti terhitung returnStatus & isOverdue |
 | 07 Notifikasi & reminder | Selesai | Notifikasi in-app otomatis (event booking/borrow/return & reminder overdue/due-soon terjadwal), endpoint baca & tandai sudah dibaca |
-| 08 Profil & reset password | **Berikutnya** | Profil & reset password |
-| 09 Pendukung (opsional) | Belum | |
+| 08 Profil & reset password | Selesai | Profil user & Web Admin (CRUD profil, update avatar Cloudinary, ubah password), alur lupa sandi OTP 6 digit via SMTP/Nodemailer (anti-enumeration, cooldown 30 detik, hash SHA-256, masa berlaku 15 menit) |
+| 09 Pendukung (opsional) | **Berikutnya** | Tabel pendukung (opsional) |
 
 Langkah tambahan di luar nomor tahap yang sudah selesai: **pemindahan penyimpanan foto dari folder lokal `uploads/` ke Cloudinary** (lihat bagian 5).
 
@@ -37,6 +37,7 @@ Langkah tambahan di luar nomor tahap yang sudah selesai: **pemindahan penyimpana
 | `0006_clumsy_amphibian` | Tabel Tahap 05 awal: `item_borrowings`, `item_borrowing_units` |
 | `0007_silky_the_hood` | Penyesuaian Tahap 05: `item_borrowing_slots`, constraint `UNIQUE(item_unit_id, start_at)`, hapus kolom `start_at`/`end_at` pada `item_borrowings` |
 | `0008_brave_lester` | Tabel Tahap 07: `notifications`, `reminder_logs` |
+| `0009_funny_groot` | Tabel Tahap 08: `password_reset_tokens` |
 
 ## 1. Gambaran Fitur
 
@@ -458,10 +459,39 @@ Notifikasi **tidak diinput manual** oleh admin atau user. Backend yang membuatny
 
 ### Tahap 08 — Profil dan lupa password
 
-- Kolom profil di `users` sudah sebagian besar ada (nama, telepon, jurusan, tanggal lahir, jenis kelamin, jenis pengguna, identitas akademik, foto profil). Periksa schema sebelum menambah kolom baru.
-- Jika foto profil diunggah, pakai `storage.service.ts` dan simpan `public_id`-nya juga.
-- **`password_reset_tokens`** (jika belum ada): id, user_id, token_hash, expires_at, consumed_at, attempt_count, created_at.
-- OTP hanya disimpan dalam bentuk hash, dengan masa berlaku, batas percobaan, dan sekali pakai. Token tidak boleh masuk log.
+- **Tabel & Kolom:**
+  - Struktur tabel `users` dipertahankan sepenuhnya tanpa penambahan atau perubahan kolom (seluruh kolom profil seperti `full_name`, `phone`, `gender`, `date_of_birth`, `department`, `user_type`, `academic_id`, `profile_image_url`, `building_id`, `role`, dan `is_active` sudah tersedia sejak migrasi awal).
+  - Tabel baru **`password_reset_tokens`** (migrasi `0009_funny_groot`):
+    - `id` (int PK autoIncrement)
+    - `user_id` (int notNull, FK -> `users.id` ON DELETE cascade)
+    - `otp_hash` (varchar 255 notNull, hash SHA-256 dari 6 digit kode OTP)
+    - `reset_token_hash` (varchar 255 nullable, hash SHA-256 dari token reset hex 32-byte)
+    - `expires_at` (timestamp notNull, masa berlaku 15 menit)
+    - `verified_at` (timestamp nullable, waktu OTP berhasil diverifikasi)
+    - `used_at` (timestamp nullable, waktu token dikonsumsi saat reset password)
+    - `created_at` (timestamp notNull defaultNow)
+    - Index pada `(user_id, created_at)`.
+
+- **Modul Profil Pengguna:**
+  - Helper `formatUserProfile` memecah `fullName` menjadi `firstName` dan `lastName` secara otomatis, menyertakan relasi `building: { id, name }`, serta tidak pernah mengekspos `passwordHash`.
+  - Endpoint `GET /api/profile` (autentikasi): mengambil data profil pengguna saat ini.
+  - Endpoint `PATCH /api/profile` (autentikasi): memperbarui nama, nomor telepon, jenis kelamin, tanggal lahir, departemen/prodi, jenis pengguna, NIM/NIP, dan gedung; pembaruan `email` dan `role` dilarang/diabaikan.
+  - Endpoint `PATCH /api/profile/avatar` (autentikasi): mengunggah foto profil ke Cloudinary pada folder `invoks/avatars` via `storage.service.ts` dan memperbarui `profile_image_url`. Mendukung field form-data `avatar` maupun fallback `image`.
+  - Endpoint `PATCH /api/profile/password` (autentikasi): memvalidasi kata sandi saat ini via bcrypt, memberlakukan kebijakan kata sandi kuat (minimal 8 karakter, huruf besar, huruf kecil, angka, karakter khusus), dan meng-hash kata sandi baru.
+
+- **Modul Lupa Kata Sandi (OTP 6 Digit via SMTP Nodemailer):**
+  - Menggunakan library `nodemailer` dengan konfigurasi SMTP (`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`) di `.env`.
+  - Endpoint `POST /api/auth/forgot-password` (publik):
+    - Anti-enumeration: selalu mengembalikan status 200 dan pesan generik `"Jika email terdaftar, kode OTP 6 digit telah dikirim ke email Anda"` baik email ditemukan maupun tidak.
+    - Cooldown check: menolak permintaan jika user baru saja meminta OTP dalam kurun waktu kurang dari 30 detik (HTTP 429).
+    - Menginvalidasi token lama yang belum digunakan (`usedAt = now()`).
+    - Menghasilkan OTP 6 digit acak numerik, menyimpannya dalam bentuk hash SHA-256 dengan masa kedaluwarsa 15 menit, lalu mengirimkan email HTML profesional bertema INVOKS Vokasi UB ke alamat user.
+  - Endpoint `POST /api/auth/verify-reset-otp` (publik):
+    - Memvalidasi kecocokan hash OTP, status belum digunakan/diverifikasi, serta masa kedaluwarsa.
+    - Menghasilkan `resetToken` acak 32-byte hex, menyimpan hash SHA-256 ke `reset_token_hash`, menandai `verifiedAt = now()`, dan mengembalikan `resetToken` ke klien.
+  - Endpoint `POST /api/auth/reset-password` (publik):
+    - Memverifikasi hash `resetToken`, memastikan token sudah diverifikasi dan belum kedaluwarsa.
+    - Menjalankan transaksi atomik: meng-update `password_hash` user dengan bcrypt cost 10 dan menandai token sebagai sudah digunakan (`usedAt = now()`).
 
 ### Tahap 09 — Tabel pendukung (opsional)
 
