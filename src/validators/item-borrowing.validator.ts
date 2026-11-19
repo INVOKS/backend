@@ -195,8 +195,41 @@ export const itemUnitAvailabilityQuerySchema = z
     }
   });
 
+export const returnUnitItemSchema = z.object({
+  itemUnitId: z.coerce.number().int().positive("ID unit barang harus positif"),
+  returnCondition: z.enum(["good", "damaged", "maintenance"]).default("good"),
+  returnNotes: z
+    .string()
+    .trim()
+    .max(1000, "Catatan pengembalian maksimal 1000 karakter")
+    .optional()
+    .nullable()
+    .transform((val) => (val && val.length > 0 ? val : null)),
+});
+
+export const returnItemBorrowingUnitsSchema = z
+  .object({
+    units: z
+      .array(returnUnitItemSchema)
+      .min(1, "Minimal pilih 1 unit barang untuk dikembalikan")
+      .max(20, "Maksimal 20 unit barang per permintaan pengembalian"),
+  })
+  .refine(
+    (data) => {
+      const ids = data.units.map((u) => u.itemUnitId);
+      return new Set(ids).size === ids.length;
+    },
+    {
+      message: "Tidak boleh ada unit barang duplikat dalam satu permintaan pengembalian",
+      path: ["units"],
+    }
+  );
+
 export type CreateItemBorrowingInput = z.infer<typeof createItemBorrowingSchema>;
 export type ItemBorrowingFilterInput = z.infer<typeof itemBorrowingFilterSchema>;
 export type ItemUnitAvailabilityQueryInput = z.infer<
   typeof itemUnitAvailabilityQuerySchema
+>;
+export type ReturnItemBorrowingUnitsInput = z.infer<
+  typeof returnItemBorrowingUnitsSchema
 >;

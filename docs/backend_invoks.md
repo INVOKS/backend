@@ -17,8 +17,9 @@ Dokumen ini adalah panduan membangun database dan backend INVOKS secara bertahap
 | 03 Booking ruangan | Selesai | Multi-slot, anti-bentrok, availability harian dan bulanan; semua tes lulus (termasuk 5 request bersamaan) |
 | 04 Master barang | Selesai | Katalog, unit fisik, foto Cloudinary; semua tes manual lulus (CRUD, validasi, hak akses, filter, arsip, penambahan unit atomik) |
 | 05 Peminjaman barang | Selesai | Multi-unit, multi-slot 1 jam 07:00–19:00, availability harian & bulanan per unit, anti-bentrok + cek overdue, uji 5 request bersamaan lulus |
-| 06 Pengembalian barang | **Berikutnya** | Konfirmasi admin per unit (pakai tabel tahap 05) |
-| 07 sampai 09 | Belum | |
+| 06 Pengembalian barang | Selesai | Konfirmasi pengembalian per unit oleh admin, sinkronisasi kondisi master unit, pelunasan otomatis ke completed, properti terhitung returnStatus & isOverdue |
+| 07 Notifikasi & reminder | **Berikutnya** | Notifikasi in-app otomatis (event & job terjadwal overdue) |
+| 08 sampai 09 | Belum | |
 
 Langkah tambahan di luar nomor tahap yang sudah selesai: **pemindahan penyimpanan foto dari folder lokal `uploads/` ke Cloudinary** (lihat bagian 5).
 
@@ -358,16 +359,45 @@ Constraint: **UNIQUE(`item_unit_id`, `start_at`)** sebagai pengaman kedua dari b
 - **Uji konkurensi 5 request bersamaan** ke unit barang dan slot waktu yang sama persis: tepat 1 request berhasil 201 Created dan 4 request lainnya tertolak 409 Conflict secara aman, tidak ada error 500, tepat 1 baris slot tersimpan di database, dan 0 header peminjaman yatim.
 - Seluruh tabel peminjaman barang (`item_borrowings`, `item_borrowing_units`, `item_borrowing_slots`) dibersihkan kembali ke 0 baris setelah pengujian.
 
-### Tahap 06 — Pengembalian oleh admin
+### Tahap 06 — Pengembalian oleh admin (selesai)
 
-Tidak perlu tabel baru. Gunakan `returned_at`, `returned_by_admin_id`, `return_condition`, `return_notes`.
+Tidak perlu tabel baru. Menggunakan kolom `returned_at`, `returned_by_admin_id`, `return_condition`, dan `return_notes` pada tabel `item_borrowing_units`.
 
-- Hanya admin yang boleh mengonfirmasi barang sudah diterima.
-- Pengembalian **per unit**: jika 2 dari 3 unit kembali, header belum selesai. Header jadi `completed` hanya jika **semua** unit sudah kembali.
-- Update dilakukan atomik; konfirmasi dua kali harus ditolak dengan aman.
-- Unit yang kembali dalam kondisi rusak tidak langsung tersedia lagi. Apakah `item_units.condition` ikut diubah dalam transaksi yang sama diputuskan di tahap ini (usulan: ya).
-- **Overdue** dihitung, bukan disimpan: `end_at` sudah lewat, `returned_at` masih kosong, dan transaksi belum dibatalkan.
-- Pencatatan serah-terima awal (`handed_over_at`) belum diputuskan.
+**Keputusan Final & Aturan Bisnis:**
+- **Hak Akses**: Hanya admin yang berhak mengonfirmasi pengembalian unit barang (`authenticate` + `requireAdmin`).
+- **Endpoint**: `PATCH /api/item-borrowings/:id/return` (status 200).
+- **Pengembalian Per Unit**: Admin dapat mengonfirmasi pengembalian 1 atau beberapa unit fisik dalam satu request.
+- **Nilai Default Kondisi**: `returnCondition` bersifat opsional di request dengan default `"good"` (memudahkan UI admin jika hanya memilih status "Dikembalikan").
+- **Sinkronisasi Otomatis Master Unit**: Kolom `item_units.condition` ikut diupdate sesuai `returnCondition` dalam transaksi yang sama. Jika unit dikembalikan dengan kondisi `"damaged"` atau `"maintenance"`, unit langsung tidak tersedia untuk peminjaman berikutnya (`bookable: false`) sampai admin memperbaikinya.
+- **Pencegahan Konfirmasi Ganda**: Unit yang sudah memiliki `returned_at !== null` ditolak 400 jika dicoba dikonfirmasi ulang.
+- **Pelunasan Header Otomatis**:
+  - Jika baru sebagian unit yang kembali, status header `item_borrowings` tetap `"booked"` dan `completed_at` tetap `null`.
+  - Jika **semua** unit pada peminjaman tersebut sudah dikembalikan (`returned_at !== null`), status header `item_borrowings` otomatis diupdate menjadi `"completed"` dan `completed_at` diisi waktu Jakarta saat ini (`getNowJakartaString()`).
+- **Properti Terhitung Dinamis (Query Baca)**:
+  - Pada tiap unit:
+    - `returnStatus`: `"returned"` jika `returned_at !== null`, atau `"borrowed"` jika `returned_at === null` (memudahkan pemetaan dropdown UI).
+    - `isOverdue`: boolean, bernilai `true` HANYA JIKA peminjaman berstatus `"booked"`, unit belum kembali (`returned_at === null`), dan slot terakhir unit tersebut sudah lewat (`MAX(end_at) < nowJakarta`).
+  - Pada header peminjaman:
+    - `hasOverdueUnits`: boolean, bernilai `true` jika minimal terdapat satu unit dengan `isOverdue === true`.
+- **Format Waktu**: `returnedAt` dan `completedAt` diformat menggunakan `toApiDateTime(...)` (`+07:00`), sedangkan timestamp `createdAt`/`updatedAt` tetap UTC (`Z`).
+
+**Format request `PATCH /api/item-borrowings/:id/return`:**
+
+```json
+{
+  "units": [
+    {
+      "itemUnitId": 18,
+      "returnCondition": "good",
+      "returnNotes": "Barang kembali lengkap dan berfungsi normal"
+    }
+  ]
+}
+```
+
+**Verifikasi yang sudah lulus:**
+- Seluruh pengujian manual via Postman (pengembalian 1 unit, pengembalian bertahap/sebagian, pelunasan otomatis ke `completed`, pencegahan konfirmasi ganda 400, sinkronisasi ke kondisi `item_units`, serta respon properti terhitung `returnStatus`, `isOverdue`, dan `hasOverdueUnits`).
+- Pembersihan data uji pasca-tes: seluruh tabel peminjaman barang (`item_borrowings`, `item_borrowing_units`, `item_borrowing_slots`) dibersihkan kembali ke 0 baris, dan seluruh unit master `item_units` dipastikan berkondisi `good`.
 
 ### Tahap 07 — Notifikasi dan reminder
 

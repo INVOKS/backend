@@ -20,6 +20,14 @@ router.get("/me", authenticate, itemBorrowingController.myBorrowings);
 // Endpoint admin untuk melihat semua peminjaman barang
 router.get("/", authenticate, requireAdmin, itemBorrowingController.listAll);
 
+// Endpoint konfirmasi pengembalian unit barang oleh admin
+router.patch(
+  "/:id/return",
+  authenticate,
+  requireAdmin,
+  itemBorrowingController.confirmReturn
+);
+
 // Endpoint detail peminjaman barang (hanya pemilik atau admin)
 router.get("/:id", authenticate, itemBorrowingController.detail);
 

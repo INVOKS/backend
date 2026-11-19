@@ -35,6 +35,7 @@ import {
 import type {
   CreateItemBorrowingInput,
   ItemBorrowingFilterInput,
+  ReturnItemBorrowingUnitsInput,
 } from "../validators/item-borrowing.validator.js";
 
 export { TimeStatus, calculateBookingTimeStatus, calculateSlotTimeStatus };
@@ -313,6 +314,134 @@ export async function createItemBorrowing(
   return await getItemBorrowingById(createdBorrowingId!);
 }
 
+export async function confirmItemBorrowingReturn(
+  borrowingId: number,
+  adminUserId: number,
+  input: ReturnItemBorrowingUnitsInput
+) {
+  await db.transaction(async (tx) => {
+    // a. Kunci baris header peminjaman terlebih dahulu
+    const [borrowing] = await tx
+      .select()
+      .from(itemBorrowings)
+      .where(eq(itemBorrowings.id, borrowingId))
+      .for("update");
+
+    if (!borrowing) {
+      throw new AppError(404, "Data peminjaman barang tidak ditemukan");
+    }
+
+    // b. Periksa borrowing.status
+    if (borrowing.status === "cancelled") {
+      throw new AppError(
+        400,
+        "Peminjaman yang sudah dibatalkan tidak dapat dikonfirmasi pengembaliannya"
+      );
+    }
+    if (borrowing.status === "completed") {
+      throw new AppError(
+        400,
+        "Seluruh unit pada peminjaman ini sudah dikembalikan"
+      );
+    }
+
+    // c. Kunci baris item_borrowing_units milik peminjaman ini (urutkan berdasarkan item_unit_id ASC dengan FOR UPDATE)
+    const existingBorrowingUnits = await tx
+      .select({
+        id: itemBorrowingUnits.id,
+        itemBorrowingId: itemBorrowingUnits.itemBorrowingId,
+        itemUnitId: itemBorrowingUnits.itemUnitId,
+        returnedAt: itemBorrowingUnits.returnedAt,
+        inventoryCode: itemUnits.inventoryCode,
+      })
+      .from(itemBorrowingUnits)
+      .innerJoin(itemUnits, eq(itemBorrowingUnits.itemUnitId, itemUnits.id))
+      .where(eq(itemBorrowingUnits.itemBorrowingId, borrowingId))
+      .orderBy(asc(itemBorrowingUnits.itemUnitId))
+      .for("update");
+
+    // Kunci baris item_units yang akan dikembalikan (urutkan berdasarkan id ASC dengan FOR UPDATE)
+    const returnUnitIdsSorted = input.units
+      .map((u) => u.itemUnitId)
+      .sort((a, b) => a - b);
+
+    if (returnUnitIdsSorted.length > 0) {
+      await tx
+        .select()
+        .from(itemUnits)
+        .where(inArray(itemUnits.id, returnUnitIdsSorted))
+        .orderBy(asc(itemUnits.id))
+        .for("update");
+    }
+
+    // d. Validasi setiap itemUnitId yang dikirim dalam input.units
+    const borrowingUnitsMap = new Map(
+      existingBorrowingUnits.map((bu) => [bu.itemUnitId, bu])
+    );
+
+    for (const returnItem of input.units) {
+      const bu = borrowingUnitsMap.get(returnItem.itemUnitId);
+      if (!bu) {
+        throw new AppError(
+          400,
+          `Unit barang (ID: ${returnItem.itemUnitId}) tidak termasuk dalam peminjaman ini`
+        );
+      }
+      if (bu.returnedAt !== null) {
+        throw new AppError(
+          400,
+          `Unit barang '${bu.inventoryCode}' sudah dikonfirmasi dikembalikan sebelumnya`
+        );
+      }
+    }
+
+    // e. Gunakan const nowJakarta = getNowJakartaString() (Aturan 14)
+    const nowJakarta = getNowJakartaString();
+
+    for (const returnItem of input.units) {
+      const bu = borrowingUnitsMap.get(returnItem.itemUnitId)!;
+
+      // Update baris item_borrowing_units yang dikembalikan
+      await tx
+        .update(itemBorrowingUnits)
+        .set({
+          returnedAt: nowJakarta,
+          returnedByAdminId: adminUserId,
+          returnCondition: returnItem.returnCondition,
+          returnNotes: returnItem.returnNotes ?? null,
+        })
+        .where(eq(itemBorrowingUnits.id, bu.id));
+
+      // Sinkronisasi master unit (item_units)
+      await tx
+        .update(itemUnits)
+        .set({
+          condition: returnItem.returnCondition,
+        })
+        .where(eq(itemUnits.id, returnItem.itemUnitId));
+    }
+
+    // f. Cek apakah semua unit pada peminjaman borrowingId sekarang sudah memiliki returnedAt !== null
+    const returnedSet = new Set(input.units.map((u) => u.itemUnitId));
+    const allReturned = existingBorrowingUnits.every(
+      (bu) => bu.returnedAt !== null || returnedSet.has(bu.itemUnitId)
+    );
+
+    if (allReturned) {
+      await tx
+        .update(itemBorrowings)
+        .set({
+          status: "completed",
+          completedAt: nowJakarta,
+        })
+        .where(eq(itemBorrowings.id, borrowingId));
+    }
+  });
+
+  // Pembacaan data respons dilakukan DI LUAR blok db.transaction
+  return await getItemBorrowingById(borrowingId);
+}
+
 export async function getItemBorrowingById(
   id: number,
   requester?: { userId: number; role: string }
@@ -390,6 +519,8 @@ export async function getItemBorrowingById(
     slotsByUnit.set(slot.itemBorrowingUnitId, list);
   }
 
+  const nowJakarta = getNowJakartaString();
+
   const formattedUnits = borrowingUnitsList.map((bu) => {
     const unitSlots = slotsByUnit.get(bu.id) || [];
     const formattedSlots = unitSlots.map((s) => ({
@@ -403,11 +534,27 @@ export async function getItemBorrowingById(
       createdAt: s.createdAt.toISOString(),
     }));
 
+    const maxEndAt =
+      unitSlots.length > 0
+        ? unitSlots.reduce((max, s) => (s.endAt > max ? s.endAt : max), "")
+        : "";
+
+    const returnStatus: "returned" | "borrowed" =
+      bu.returnedAt !== null ? "returned" : "borrowed";
+
+    const isOverdue =
+      borrowing.status === "booked" &&
+      bu.returnedAt === null &&
+      Boolean(maxEndAt) &&
+      maxEndAt < nowJakarta;
+
     return {
       id: bu.id,
       itemBorrowingId: bu.itemBorrowingId,
       itemUnitId: bu.itemUnitId,
       inventoryCode: bu.inventoryCode,
+      returnStatus,
+      isOverdue,
       returnedAt: bu.returnedAt ? toApiDateTime(bu.returnedAt) : null,
       returnedByAdminId: bu.returnedByAdminId,
       returnCondition: bu.returnCondition,
@@ -423,6 +570,8 @@ export async function getItemBorrowingById(
       ? "completed"
       : calculateBookingTimeStatus(slotsList, borrowing.status as "booked" | "cancelled");
 
+  const hasOverdueUnits = formattedUnits.some((u) => u.isOverdue);
+
   return {
     id: borrowing.id,
     borrowingCode: borrowing.borrowingCode,
@@ -432,6 +581,7 @@ export async function getItemBorrowingById(
     picPhone: borrowing.picPhone,
     status: borrowing.status,
     timeStatus,
+    hasOverdueUnits,
     completedAt: borrowing.completedAt
       ? toApiDateTime(borrowing.completedAt)
       : null,
@@ -585,6 +735,8 @@ async function getBorrowingsList(filters?: InternalBorrowingFilter) {
     unitsByBorrowing.set(u.itemBorrowingId, list);
   }
 
+  const nowJakarta = getNowJakartaString();
+
   return borrowingsList.map((b) => {
     const bUnits = unitsByBorrowing.get(b.id) || [];
     const bAllSlots = slotsByBorrowing.get(b.id) || [];
@@ -602,11 +754,27 @@ async function getBorrowingsList(filters?: InternalBorrowingFilter) {
         createdAt: s.createdAt.toISOString(),
       }));
 
+      const maxEndAt =
+        uSlots.length > 0
+          ? uSlots.reduce((max, s) => (s.endAt > max ? s.endAt : max), "")
+          : "";
+
+      const returnStatus: "returned" | "borrowed" =
+        bu.returnedAt !== null ? "returned" : "borrowed";
+
+      const isOverdue =
+        b.status === "booked" &&
+        bu.returnedAt === null &&
+        Boolean(maxEndAt) &&
+        maxEndAt < nowJakarta;
+
       return {
         id: bu.id,
         itemBorrowingId: bu.itemBorrowingId,
         itemUnitId: bu.itemUnitId,
         inventoryCode: bu.inventoryCode,
+        returnStatus,
+        isOverdue,
         returnedAt: bu.returnedAt ? toApiDateTime(bu.returnedAt) : null,
         returnedByAdminId: bu.returnedByAdminId,
         returnCondition: bu.returnCondition,
@@ -622,6 +790,8 @@ async function getBorrowingsList(filters?: InternalBorrowingFilter) {
         ? "completed"
         : calculateBookingTimeStatus(bAllSlots, b.status as "booked" | "cancelled");
 
+    const hasOverdueUnits = formattedUnits.some((u) => u.isOverdue);
+
     return {
       id: b.id,
       borrowingCode: b.borrowingCode,
@@ -631,6 +801,7 @@ async function getBorrowingsList(filters?: InternalBorrowingFilter) {
       picPhone: b.picPhone,
       status: b.status,
       timeStatus,
+      hasOverdueUnits,
       completedAt: b.completedAt ? toApiDateTime(b.completedAt) : null,
       createdAt: b.createdAt.toISOString(),
       updatedAt: b.updatedAt.toISOString(),

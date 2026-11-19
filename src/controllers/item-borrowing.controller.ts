@@ -4,6 +4,7 @@ import { AppError } from "../utils/app-error.js";
 import {
   createItemBorrowingSchema,
   itemBorrowingFilterSchema,
+  returnItemBorrowingUnitsSchema,
 } from "../validators/item-borrowing.validator.js";
 
 export async function create(req: Request, res: Response): Promise<void> {
@@ -63,6 +64,34 @@ export async function detail(req: Request, res: Response): Promise<void> {
   res.status(200).json({
     success: true,
     message: "Detail peminjaman barang berhasil diambil",
+    data,
+  });
+}
+
+export async function confirmReturn(
+  req: Request,
+  res: Response
+): Promise<void> {
+  const borrowingId = Number(req.params.id);
+  if (isNaN(borrowingId) || borrowingId <= 0 || !Number.isInteger(borrowingId)) {
+    throw new AppError(400, "ID peminjaman barang tidak valid");
+  }
+
+  const adminUserId = req.user?.id;
+  if (!adminUserId) {
+    throw new AppError(401, "Silakan login terlebih dahulu");
+  }
+
+  const validated = returnItemBorrowingUnitsSchema.parse(req.body);
+  const data = await itemBorrowingService.confirmItemBorrowingReturn(
+    borrowingId,
+    adminUserId,
+    validated
+  );
+
+  res.status(200).json({
+    success: true,
+    message: "Pengembalian unit barang berhasil dikonfirmasi",
     data,
   });
 }
