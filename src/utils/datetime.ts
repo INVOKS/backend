@@ -100,6 +100,34 @@ export function addOneHourJakarta(dtStr: string): string {
   return `${nextY}-${nextM}-${nextD} ${nextH}:00:00`;
 }
 
+export function addMinutesJakarta(dtStr: string, minutes: number): string {
+  // Input: "YYYY-MM-DD HH:mm:ss"
+  // Output: "YYYY-MM-DD HH:mm:ss" (+minutes menit)
+  const parts = dtStr.split(" ");
+  const datePart = parts[0] ?? "";
+  const timePart = parts[1] ?? "";
+
+  const dParts = datePart.split("-").map(Number);
+  const y = dParts[0] ?? 2026;
+  const m = dParts[1] ?? 1;
+  const d = dParts[2] ?? 1;
+
+  const tParts = timePart.split(":").map(Number);
+  const hour = tParts[0] ?? 0;
+  const min = tParts[1] ?? 0;
+  const sec = tParts[2] ?? 0;
+
+  const dateObj = new Date(Date.UTC(y, m - 1, d, hour, min + minutes, sec));
+  const nextY = dateObj.getUTCFullYear();
+  const nextM = String(dateObj.getUTCMonth() + 1).padStart(2, "0");
+  const nextD = String(dateObj.getUTCDate()).padStart(2, "0");
+  const nextH = String(dateObj.getUTCHours()).padStart(2, "0");
+  const nextMin = String(dateObj.getUTCMinutes()).padStart(2, "0");
+  const nextSec = String(dateObj.getUTCSeconds()).padStart(2, "0");
+
+  return `${nextY}-${nextM}-${nextD} ${nextH}:${nextMin}:${nextSec}`;
+}
+
 export function isValidDateString(dateStr: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
   const parts = dateStr.split("-").map(Number);

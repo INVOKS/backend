@@ -9,6 +9,7 @@ import { rooms } from "../db/schema/rooms.js";
 import { buildings } from "../db/schema/buildings.js";
 import { users } from "../db/schema/users.js";
 import { AppError } from "../utils/app-error.js";
+import { createEventNotification } from "./notification.service.js";
 import {
   getNowJakartaString,
   formatInputSlotToDbString,
@@ -201,7 +202,19 @@ export async function createBooking(
   });
 
   // 5. Pembacaan data respons dilakukan DI LUAR blok transaksi
-  return await getBookingById(createdBookingId!);
+  const booking = await getBookingById(createdBookingId!);
+
+  // Catat notifikasi kejadian room_booking_created
+  void createEventNotification({
+    userId,
+    type: "room_booking_created",
+    title: "Pemesanan Ruangan Berhasil",
+    message: `Pemesanan ruangan ${booking.room?.name ? `"${booking.room.name}"` : ""} dengan kode ${booking.bookingCode} berhasil diajukan.`,
+    referenceType: "room_booking",
+    referenceId: booking.id,
+  });
+
+  return booking;
 }
 
 export async function getBookingById(id: number) {

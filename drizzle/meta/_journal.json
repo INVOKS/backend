@@ -57,6 +57,13 @@
       "when": 1794985230608,
       "tag": "0007_silky_the_hood",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1795065425261,
+      "tag": "0008_brave_lester",
+      "breakpoints": true
     }
   ]
 }

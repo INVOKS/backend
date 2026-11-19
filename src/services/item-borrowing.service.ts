@@ -17,6 +17,7 @@ import { items } from "../db/schema/items.js";
 import { users } from "../db/schema/users.js";
 import { AppError } from "../utils/app-error.js";
 import { isDuplicateKeyError } from "../utils/db-error.js";
+import { createEventNotification } from "./notification.service.js";
 import {
   getNowJakartaString,
   formatInputSlotToDbString,
@@ -311,7 +312,20 @@ export async function createItemBorrowing(
   });
 
   // Pembacaan data respons dilakukan DI LUAR blok db.transaction
-  return await getItemBorrowingById(createdBorrowingId!);
+  const borrowing = await getItemBorrowingById(createdBorrowingId!);
+
+  // Catat notifikasi kejadian item_borrowing_created
+  const totalUnitsCount = borrowing.units.length;
+  void createEventNotification({
+    userId,
+    type: "item_borrowing_created",
+    title: "Peminjaman Barang Berhasil",
+    message: `Peminjaman barang dengan kode ${borrowing.borrowingCode} (${totalUnitsCount} unit) berhasil diajukan.`,
+    referenceType: "item_borrowing",
+    referenceId: borrowing.id,
+  });
+
+  return borrowing;
 }
 
 export async function confirmItemBorrowingReturn(
@@ -439,7 +453,32 @@ export async function confirmItemBorrowingReturn(
   });
 
   // Pembacaan data respons dilakukan DI LUAR blok db.transaction
-  return await getItemBorrowingById(borrowingId);
+  const updatedBorrowing = await getItemBorrowingById(borrowingId);
+
+  // Catat notifikasi kejadian item_return_confirmed
+  const returnedCodes = input.units
+    .map((u) => {
+      const unitInfo = updatedBorrowing.units.find(
+        (bu) => bu.itemUnitId === u.itemUnitId
+      );
+      return unitInfo?.inventoryCode || `ID ${u.itemUnitId}`;
+    })
+    .join(", ");
+  const isAllCompleted = updatedBorrowing.status === "completed";
+  const returnMsg = isAllCompleted
+    ? `Pengembalian unit barang (${returnedCodes}) telah dikonfirmasi oleh admin. Seluruh peminjaman ${updatedBorrowing.borrowingCode} telah selesai.`
+    : `Pengembalian unit barang (${returnedCodes}) telah dikonfirmasi oleh admin untuk peminjaman ${updatedBorrowing.borrowingCode}.`;
+
+  void createEventNotification({
+    userId: updatedBorrowing.userId,
+    type: "item_return_confirmed",
+    title: "Pengembalian Barang Dikonfirmasi",
+    message: returnMsg,
+    referenceType: "item_borrowing",
+    referenceId: updatedBorrowing.id,
+  });
+
+  return updatedBorrowing;
 }
 
 export async function getItemBorrowingById(

@@ -18,8 +18,9 @@ Dokumen ini adalah panduan membangun database dan backend INVOKS secara bertahap
 | 04 Master barang | Selesai | Katalog, unit fisik, foto Cloudinary; semua tes manual lulus (CRUD, validasi, hak akses, filter, arsip, penambahan unit atomik) |
 | 05 Peminjaman barang | Selesai | Multi-unit, multi-slot 1 jam 07:00–19:00, availability harian & bulanan per unit, anti-bentrok + cek overdue, uji 5 request bersamaan lulus |
 | 06 Pengembalian barang | Selesai | Konfirmasi pengembalian per unit oleh admin, sinkronisasi kondisi master unit, pelunasan otomatis ke completed, properti terhitung returnStatus & isOverdue |
-| 07 Notifikasi & reminder | **Berikutnya** | Notifikasi in-app otomatis (event & job terjadwal overdue) |
-| 08 sampai 09 | Belum | |
+| 07 Notifikasi & reminder | Selesai | Notifikasi in-app otomatis (event booking/borrow/return & reminder overdue/due-soon terjadwal), endpoint baca & tandai sudah dibaca |
+| 08 Profil & reset password | **Berikutnya** | Profil & reset password |
+| 09 Pendukung (opsional) | Belum | |
 
 Langkah tambahan di luar nomor tahap yang sudah selesai: **pemindahan penyimpanan foto dari folder lokal `uploads/` ke Cloudinary** (lihat bagian 5).
 
@@ -35,6 +36,7 @@ Langkah tambahan di luar nomor tahap yang sudah selesai: **pemindahan penyimpana
 | `0005_huge_masque` | Tabel Tahap 04: `item_categories`, `items`, `item_units` |
 | `0006_clumsy_amphibian` | Tabel Tahap 05 awal: `item_borrowings`, `item_borrowing_units` |
 | `0007_silky_the_hood` | Penyesuaian Tahap 05: `item_borrowing_slots`, constraint `UNIQUE(item_unit_id, start_at)`, hapus kolom `start_at`/`end_at` pada `item_borrowings` |
+| `0008_brave_lester` | Tabel Tahap 07: `notifications`, `reminder_logs` |
 
 ## 1. Gambaran Fitur
 
@@ -399,53 +401,60 @@ Tidak perlu tabel baru. Menggunakan kolom `returned_at`, `returned_by_admin_id`,
 - Seluruh pengujian manual via Postman (pengembalian 1 unit, pengembalian bertahap/sebagian, pelunasan otomatis ke `completed`, pencegahan konfirmasi ganda 400, sinkronisasi ke kondisi `item_units`, serta respon properti terhitung `returnStatus`, `isOverdue`, dan `hasOverdueUnits`).
 - Pembersihan data uji pasca-tes: seluruh tabel peminjaman barang (`item_borrowings`, `item_borrowing_units`, `item_borrowing_slots`) dibersihkan kembali ke 0 baris, dan seluruh unit master `item_units` dipastikan berkondisi `good`.
 
-### Tahap 07 — Notifikasi dan reminder
+### Tahap 07 — Notifikasi dan reminder (selesai)
 
 #### Cara kerja: notifikasi dibuat otomatis oleh sistem
-Notifikasi **tidak diinput manual** oleh admin atau user. Backend yang membuatnya sendiri dengan dua cara:
+Notifikasi **tidak diinput manual** oleh admin atau user. Backend yang membuatnya sendiri secara otomatis dengan dua cara:
 
-1. **Dipicu kejadian (event-based):** saat suatu proses selesai, backend langsung menambah baris di `notifications`. Contoh: booking berhasil dibuat, admin mengonfirmasi pengembalian.
-2. **Dipicu jadwal (job terjadwal):** job di server berjalan berkala (misalnya tiap beberapa menit), mencari kondisi tertentu, lalu membuat notifikasi. Contoh: peminjaman yang lewat batas tetapi unitnya belum dikembalikan. Job ini jalan di server, jadi **tidak tergantung aplikasi Flutter sedang dibuka**.
-
-Alur untuk reminder keterlambatan:
-
-1. Job mencari peminjaman yang `end_at`-nya sudah lewat, masih punya unit dengan `returned_at` kosong, dan statusnya belum dibatalkan.
-2. Untuk tiap peminjaman, job membuat `deduplication_key` (misalnya gabungan jenis notifikasi + ID peminjaman + periode reminder).
-3. Jika key itu belum ada di `reminder_logs`, job membuat baris di `notifications` untuk peminjamnya, lalu mencatat pengirimannya di `reminder_logs`.
-4. Jika key sudah ada, job melewatinya, jadi tidak ada notifikasi ganda walau job jalan berulang.
-5. Setelah semua unit dikembalikan, peminjaman itu tidak lagi ditemukan oleh job, sehingga reminder berhenti sendiri.
-
-#### Jenis notifikasi
-
-| Jenis (`type`) | Dibuat saat | Penerima | Pemicu | Status keputusan |
-|---|---|---|---|---|
-| `return_overdue` | Barang lewat batas dan belum dikembalikan | Peminjam | Job terjadwal | **Sudah jelas** (ada di rancangan awal) |
-| `room_booking_created` | Booking ruangan berhasil disimpan | Pembuat booking | Event | Usulan, **pending** |
-| `item_borrowing_created` | Peminjaman barang berhasil disimpan | Peminjam | Event | Usulan, **pending** |
-| `item_return_confirmed` | Admin mengonfirmasi pengembalian satu unit | Peminjam | Event | Usulan, **pending** |
-| `return_due_soon` | Mendekati batas pengembalian | Peminjam | Job terjadwal | Usulan, **pending** (menunggu jadwal reminder) |
-
-Hanya `return_overdue` yang sudah pasti. Sisanya hanya usulan; implementasikan setelah kamu memutuskan jenis mana yang benar-benar dibutuhkan.
+1. **Dipicu kejadian (event-based):** saat suatu proses berhasil disimpan (di luar transaksi utama), backend membuat baris di `notifications` dengan pembungkus `try/catch` aman agar tidak mengganggu transaksi utama.
+   - `room_booking_created`: dibuat saat pemesanan ruangan berhasil diajukan (`reference_type = "room_booking"`).
+   - `item_borrowing_created`: dibuat saat peminjaman barang berhasil diajukan (`reference_type = "item_borrowing"`).
+   - `item_return_confirmed`: dibuat saat admin mengonfirmasi pengembalian unit barang.
+2. **Dipicu jadwal (job terjadwal di server):** background worker berjalan berkala (default interval 15 menit, configurable lewat `REMINDER_JOB_INTERVAL_MS`), mengevaluasi peminjaman barang aktif (`status = "booked"` dan `returned_at IS NULL`):
+   - `return_due_soon`: dipicu ketika batas akhir pengembalian unit berada di rentang 30 menit ke depan (`nowJakarta < maxEndAt <= nowJakarta + REMINDER_DUE_SOON_MINUTES`). Deduplication key: `return_due_soon:item_borrowing:<borrowingId>` (maks 1 kali per peminjaman).
+   - `return_overdue`: dipicu ketika batas akhir pengembalian unit sudah terlewati (`maxEndAt < nowJakarta`). Deduplication key: `return_overdue:item_borrowing:<borrowingId>:<YYYY-MM-DD>` (maksimal 1 kali per hari per peminjaman selama masih ada unit yang belum dikembalikan).
 
 #### Tabel
 
-- **`notifications`**: id, user_id, type, title, message, reference_type, reference_id, is_read, read_at, created_at.
-  - `reference_type` + `reference_id` menunjuk ke transaksi terkait (misalnya `item_borrowing` dengan ID 12). Ini referensi logis, divalidasi di service, bukan FK, karena bisa menunjuk ke lebih dari satu tabel.
-  - `is_read` dan `read_at` diubah ketika mahasiswa membuka notifikasi di aplikasi.
-- **`reminder_logs`**: id, notification_id, channel (`in_app` / `push` / opsional `email`), deduplication_key (unik), status, attempt_count, sent_at, last_error, created_at.
-  - Fungsinya mencegah notifikasi ganda dan mencatat percobaan kirim yang gagal.
-  - Jika nanti tabel ini juga dipakai untuk notifikasi non-reminder, namai ulang menjadi `notification_deliveries`. Pilih salah satu nama saja, jangan membuat keduanya.
-- **`user_devices`** (opsional, hanya jika memakai push notification/FCM): id, user_id, token, platform, is_active, last_seen_at, created_at.
+- **`notifications`** (migrasi `0008_brave_lester`):
+  - `id` (int PK autoIncrement)
+  - `user_id` (FK → users, cascade)
+  - `type` (varchar 50: `room_booking_created`, `item_borrowing_created`, `item_return_confirmed`, `return_due_soon`, `return_overdue`)
+  - `title` (varchar 255)
+  - `message` (text)
+  - `reference_type` (varchar 50: `room_booking`, `item_borrowing`)
+  - `reference_id` (int)
+  - `is_read` (boolean, default false)
+  - `read_at` (timestamp UTC, nullable)
+  - `created_at` (timestamp UTC defaultNow)
+  - Index: `(user_id, is_read, created_at)` dan `(reference_type, reference_id)`
+- **`reminder_logs`** (migrasi `0008_brave_lester`):
+  - `id` (int PK autoIncrement)
+  - `notification_id` (FK → notifications, cascade)
+  - `channel` (varchar 30 default "in_app")
+  - `deduplication_key` (varchar 150, UNIQUE)
+  - `status` (varchar 30 default "sent")
+  - `attempt_count` (int default 1)
+  - `sent_at` (timestamp UTC)
+  - `last_error` (text, nullable)
+  - `created_at` (timestamp UTC defaultNow)
 
-#### Aturan
+#### Endpoint Notifikasi
 
-- Penerima hanya user terkait. Mahasiswa tidak bisa melihat notifikasi milik orang lain.
-- Mulai dari notifikasi **in-app** saja (muncul di dalam aplikasi). Push notification/FCM ditambahkan belakangan setelah disetujui.
-- Jadwal dan frekuensi reminder dibuat **configurable** (misalnya lewat `system_settings`), jangan ditulis permanen di kode, karena belum diputuskan.
-- Notifikasi dibuat setelah proses utamanya berhasil, jadi kalau booking gagal, tidak ada notifikasi yang terbuat.
-- Job terjadwal butuh server yang selalu menyala (relevan saat deploy).
+| Method | Path | Akses | Keterangan |
+|---|---|---|---|
+| GET | `/api/notifications` | User login | Daftar notifikasi milik user; filter `?isRead=true\|false`, paginasi `?limit&offset`, menyertakan `unreadCount` |
+| PATCH | `/api/notifications/:id/read` | User login | Tandai satu notifikasi sebagai sudah dibaca (`isRead = true`, `readAt`) |
+| PATCH | `/api/notifications/read-all` | User login | Tandai seluruh notifikasi user sebagai sudah dibaca |
 
-**Belum diputuskan:** seberapa sering reminder keterlambatan dikirim (sekali, harian, tiap beberapa jam), apakah ada reminder sebelum jatuh tempo, dan jenis notifikasi tambahan di atas.
+#### Aturan & Keamanan
+- Mahasiswa hanya dapat melihat dan menandai notifikasi miliknya sendiri (mencegah kebocoran data antar user).
+- Scheduler di `src/jobs/reminder.job.ts` dilengkapi guard anti-overlap (`isRunning`) dan dapat dinonaktifkan lewat `REMINDER_JOB_ENABLED=false`.
+- Deduplication key mencegah reminder ganda walau server di-restart atau job berjalan berulang.
+
+**Verifikasi yang sudah lulus:**
+- Seluruh pengujian manual via Postman & phpMyAdmin 100% lulus (pembuatan notifikasi event `room_booking_created`, `item_borrowing_created`, `item_return_confirmed`, pembacaan notifikasi terpaginasi dengan `unreadCount`, penandaan sudah dibaca per id dan read-all secara idempoten, isolasi akses antar user, serta trigger background reminder overdue & due-soon).
+- Pembersihan data uji pasca-tes: seluruh data uji coba pada tabel `reminder_logs`, `notifications`, `item_borrowings`, `item_borrowing_units`, dan `item_borrowing_slots` dibersihkan kembali ke 0 baris, dan seluruh unit master `item_units` berkondisi `good`.
 
 ### Tahap 08 — Profil dan lupa password
 

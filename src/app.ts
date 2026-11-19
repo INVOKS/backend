@@ -9,6 +9,7 @@ import itemCategoryRoutes from "./routes/item-category.routes.js";
 import itemRoutes from "./routes/item.routes.js";
 import itemUnitRoutes from "./routes/item-unit.routes.js";
 import itemBorrowingRoutes from "./routes/item-borrowing.routes.js";
+import notificationRoutes from "./routes/notification.routes.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
 
 const app = express();
@@ -70,6 +71,7 @@ app.use("/api/item-categories", itemCategoryRoutes);
 app.use("/api/items", itemRoutes);
 app.use("/api/item-units", itemUnitRoutes);
 app.use("/api/item-borrowings", itemBorrowingRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 // Error handler diletakkan paling bawah setelah seluruh rute
 app.use(errorHandler);
