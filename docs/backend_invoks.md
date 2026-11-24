@@ -20,7 +20,7 @@ Dokumen ini adalah panduan membangun database dan backend INVOKS secara bertahap
 | 06 Pengembalian barang | Selesai | Konfirmasi pengembalian per unit oleh admin, sinkronisasi kondisi master unit, pelunasan otomatis ke completed, properti terhitung returnStatus & isOverdue |
 | 07 Notifikasi & reminder | Selesai | Notifikasi in-app otomatis (event booking/borrow/return & reminder overdue/due-soon terjadwal), endpoint baca & tandai sudah dibaca |
 | 08 Profil & reset password | Selesai | Profil user & Web Admin (CRUD profil, update avatar Cloudinary, ubah password), alur lupa sandi OTP 6 digit via SMTP/Nodemailer (anti-enumeration, cooldown 30 detik, hash SHA-256, masa berlaku 15 menit) |
-| 09 Pendukung (opsional) | **Berikutnya** | Tabel pendukung (opsional) |
+| 09 Pendukung (opsional) | Selesai | 3 tabel pendukung (audit_logs, system_settings, idempotency_requests), fail-safe audit log helper pada aksi admin, middleware idempotency opsional (mencegah booking ganda), endpoint kelola sistem setting & baca audit log |
 
 Langkah tambahan di luar nomor tahap yang sudah selesai: **pemindahan penyimpanan foto dari folder lokal `uploads/` ke Cloudinary** (lihat bagian 5).
 
@@ -38,6 +38,7 @@ Langkah tambahan di luar nomor tahap yang sudah selesai: **pemindahan penyimpana
 | `0007_silky_the_hood` | Penyesuaian Tahap 05: `item_borrowing_slots`, constraint `UNIQUE(item_unit_id, start_at)`, hapus kolom `start_at`/`end_at` pada `item_borrowings` |
 | `0008_brave_lester` | Tabel Tahap 07: `notifications`, `reminder_logs` |
 | `0009_funny_groot` | Tabel Tahap 08: `password_reset_tokens` |
+| `0010_brief_abomination` | Tabel Tahap 09: `audit_logs`, `system_settings`, `idempotency_requests` |
 
 ## 1. Gambaran Fitur
 
@@ -495,9 +496,61 @@ Notifikasi **tidak diinput manual** oleh admin atau user. Backend yang membuatny
 
 ### Tahap 09 — Tabel pendukung (opsional)
 
-- **`audit_logs`**: id, actor_user_id, action, entity_type, entity_id, before_data (JSON), after_data (JSON), created_at.
-- **`system_settings`**: setting_key (PK), setting_value (JSON), description, updated_by, updated_at (misalnya jam slot, interval 60 menit, zona waktu).
-- **`idempotency_requests`**: id, user_id, operation, idempotency_key, request_hash, response_status, response_body, expires_at, created_at; UNIQUE(user_id, operation, idempotency_key). Berguna agar booking yang terkirim dua kali tidak tercatat ganda.
+- **Tabel Baru (Migrasi `0010_brief_abomination`):**
+  - **`audit_logs`**:
+    - `id` (int PK autoIncrement)
+    - `actor_user_id` (int nullable, FK -> `users.id` ON DELETE set null)
+    - `action` (varchar 100 notNull, misal: `"CREATE"`, `"UPDATE"`, `"ARCHIVE"`, `"UNARCHIVE"`, `"RETURN_CONFIRMED"`, `"UPDATE_SETTING"`)
+    - `entity_type` (varchar 100 notNull, misal: `"room"`, `"item"`, `"item_unit"`, `"item_borrowing"`, `"system_setting"`)
+    - `entity_id` (varchar 100 notNull, mendukung ID numerik maupun string key)
+    - `before_data` (json nullable)
+    - `after_data` (json nullable)
+    - `created_at` (timestamp notNull defaultNow)
+    - Index pada `(entity_type, entity_id)` dan `(actor_user_id, created_at)`.
+  - **`system_settings`**:
+    - `setting_key` (varchar 100 PK)
+    - `setting_value` (json notNull)
+    - `description` (text nullable)
+    - `updated_by` (int nullable, FK -> `users.id` ON DELETE set null)
+    - `updated_at` (timestamp notNull defaultNow onUpdateNow)
+  - **`idempotency_requests`**:
+    - `id` (int PK autoIncrement)
+    - `user_id` (int notNull, FK -> `users.id` ON DELETE cascade)
+    - `operation` (varchar 100 notNull, misal: `"CREATE_ROOM_BOOKING"`, `"CREATE_ITEM_BORROWING"`)
+    - `idempotency_key` (varchar 128 notNull)
+    - `request_hash` (varchar 64 notNull, hash SHA-256 dari request body)
+    - `response_status` (int notNull)
+    - `response_body` (json notNull)
+    - `expires_at` (timestamp notNull, masa berlaku 24 jam)
+    - `created_at` (timestamp notNull defaultNow)
+    - Unique constraint: `UNIQUE(user_id, operation, idempotency_key)` dan index pada `(expires_at)`.
+
+- **Audit Log Helper (`src/services/audit-log.service.ts`):**
+  - Fungsi `recordAuditLog(...)` membungkus operasi penulisan dalam `try/catch` aman (fail-safe) sehingga kegagalan mencatat log tidak pernah menggagalkan alur transaksi bisnis utama.
+  - Dipasang pada aksi penting admin: konfirmasi pengembalian barang (`RETURN_CONFIRMED`), arsip/unarsip & edit ruangan (`room.service.ts`), arsip/unarsip & edit barang (`item.service.ts`), serta pembaruan pengaturan sistem (`system-setting.service.ts`).
+
+- **Middleware Idempotency (`src/middlewares/idempotency.middleware.ts`):**
+  - Bersifat opsional: jika header `Idempotency-Key` tidak dikirim, request langsung dilanjutkan seperti biasa agar klien lama tetap kompatibel 100%.
+  - Jika `Idempotency-Key` dikirim:
+    - Menghitung SHA-256 dari payload `req.body`.
+    - Jika key sudah pernah dipakai dengan payload berbeda: mengembalikan `409 Conflict`.
+    - Jika key sudah pernah dipakai dengan payload identik: langsung mengembalikan respons tersimpan tanpa mengeksekusi booking ulang.
+    - Jika belum pernah dipakai: intercept respons 2xx dan simpan ke `idempotency_requests` (berlaku 24 jam).
+  - Dipasang pada `POST /api/room-bookings` dan `POST /api/item-borrowings`.
+
+- **Pengaturan Sistem Awal (`src/services/system-setting.service.ts`):**
+  - Fungsi idempoten `ensureDefaultSystemSettings()` menginisialisasi 3 konfigurasi awal:
+    - `operational_hours`: `{ "startHour": 7, "endHour": 19, "slotDurationMinutes": 60, "timezone": "Asia/Jakarta" }`
+    - `booking_limits`: `{ "maxSlotsPerBooking": 50, "maxAdvanceMonths": 12, "maxUnitsPerItemBorrowing": 20 }`
+    - `reminder_policy`: `{ "dueSoonMinutes": 30, "jobIntervalMinutes": 15 }`
+  - Dijalankan otomatis saat server startup (`src/server.ts`) dan seed (`npm run db:seed`).
+
+- **Endpoint API Admin:**
+  - `GET /api/audit-logs` (admin): daftar riwayat log aktivitas terpaginasi (`limit`, `offset`/`page`), filter (`entityType`, `action`, `actorUserId`), diurutkan `created_at DESC`, lengkap dengan info aktor `{ id, fullName, email, role }` (tanpa `passwordHash`).
+  - `GET /api/audit-logs/:id` (admin): detail audit log tertentu.
+  - `GET /api/system-settings` (auth): daftar seluruh konfigurasi sistem beserta updater.
+  - `GET /api/system-settings/:key` (auth): detail konfigurasi tertentu berdasarkan key.
+  - `PUT /api/system-settings/:key` (admin): memperbarui nilai JSON `settingValue` dan deskripsi, mencatat `updatedBy`, serta merekam perubahan ke `audit_logs`.
 
 ## 5. Penyimpanan Foto (Cloudinary)
 

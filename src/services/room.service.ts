@@ -6,6 +6,7 @@ import { facilities } from "../db/schema/facilities.js";
 import { roomFacilities } from "../db/schema/room-facilities.js";
 import { AppError } from "../utils/app-error.js";
 import { uploadImage, deleteImage } from "./storage.service.js";
+import { recordAuditLog } from "./audit-log.service.js";
 import type {
   CreateRoomInput,
   UpdateRoomInput,
@@ -235,7 +236,8 @@ export async function createRoom(
 export async function updateRoom(
   id: number,
   input: UpdateRoomInput,
-  file?: Express.Multer.File
+  file?: Express.Multer.File,
+  adminUserId?: number
 ): Promise<Room> {
   const currentRoom = await getRoomById(id);
 
@@ -314,18 +316,41 @@ export async function updateRoom(
     await deleteImage(currentRoom.imagePublicId);
   }
 
-  return await getRoomById(id);
+  const updatedRoom = await getRoomById(id);
+
+  void recordAuditLog({
+    actorUserId: adminUserId ?? null,
+    action: "UPDATE",
+    entityType: "room",
+    entityId: String(id),
+    beforeData: { name: currentRoom.name, capacityMin: currentRoom.capacityMin, capacityMax: currentRoom.capacityMax },
+    afterData: { name: updatedRoom.name, capacityMin: updatedRoom.capacityMin, capacityMax: updatedRoom.capacityMax },
+  });
+
+  return updatedRoom;
 }
 
 export async function setRoomActiveStatus(
   id: number,
-  isActive: boolean
+  isActive: boolean,
+  adminUserId?: number
 ): Promise<Room> {
-  await getRoomById(id);
+  const before = await getRoomById(id);
 
   await db.update(rooms).set({ isActive }).where(eq(rooms.id, id));
 
-  return await getRoomById(id);
+  const after = await getRoomById(id);
+
+  void recordAuditLog({
+    actorUserId: adminUserId ?? null,
+    action: isActive ? "UNARCHIVE" : "ARCHIVE",
+    entityType: "room",
+    entityId: String(id),
+    beforeData: { isActive: before.isActive },
+    afterData: { isActive: after.isActive },
+  });
+
+  return after;
 }
 
 export async function setRoomFacilities(

@@ -2,6 +2,7 @@ import { Router } from "express";
 import * as itemBorrowingController from "../controllers/item-borrowing.controller.js";
 import { authenticate, requireAdmin } from "../middlewares/auth.middleware.js";
 import { validateBody } from "../middlewares/validate.middleware.js";
+import { idempotency } from "../middlewares/idempotency.middleware.js";
 import { createItemBorrowingSchema } from "../validators/item-borrowing.validator.js";
 
 const router = Router();
@@ -10,6 +11,7 @@ const router = Router();
 router.post(
   "/",
   authenticate,
+  idempotency("CREATE_ITEM_BORROWING"),
   validateBody(createItemBorrowingSchema),
   itemBorrowingController.create
 );

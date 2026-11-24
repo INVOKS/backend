@@ -14,3 +14,6 @@ export * from "./item-borrowing-slots.js";
 export * from "./notifications.js";
 export * from "./reminder-logs.js";
 export * from "./password-reset-tokens.js";
+export * from "./audit-logs.js";
+export * from "./system-settings.js";
+export * from "./idempotency-requests.js";

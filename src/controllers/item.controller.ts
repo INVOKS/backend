@@ -90,7 +90,7 @@ export async function update(req: Request, res: Response): Promise<void> {
   }
 
   const validated = updateItemSchema.parse(normalizedBody);
-  const data = await itemService.updateItem(id, validated, req.file);
+  const data = await itemService.updateItem(id, validated, req.file, req.user?.id);
 
   res.status(200).json({
     success: true,
@@ -101,7 +101,7 @@ export async function update(req: Request, res: Response): Promise<void> {
 
 export async function archive(req: Request, res: Response): Promise<void> {
   const id = Number(req.params.id);
-  const data = await itemService.setItemActiveStatus(id, false);
+  const data = await itemService.setItemActiveStatus(id, false, req.user?.id);
 
   res.status(200).json({
     success: true,
@@ -112,7 +112,7 @@ export async function archive(req: Request, res: Response): Promise<void> {
 
 export async function unarchive(req: Request, res: Response): Promise<void> {
   const id = Number(req.params.id);
-  const data = await itemService.setItemActiveStatus(id, true);
+  const data = await itemService.setItemActiveStatus(id, true, req.user?.id);
 
   res.status(200).json({
     success: true,

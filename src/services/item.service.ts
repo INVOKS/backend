@@ -5,6 +5,7 @@ import { items, type Item } from "../db/schema/items.js";
 import { itemUnits, type ItemUnit } from "../db/schema/item-units.js";
 import { AppError } from "../utils/app-error.js";
 import { uploadImage, deleteImage } from "./storage.service.js";
+import { recordAuditLog } from "./audit-log.service.js";
 import type {
   CreateItemInput,
   UpdateItemInput,
@@ -231,7 +232,8 @@ export async function createItem(
 export async function updateItem(
   id: number,
   input: UpdateItemInput,
-  file?: Express.Multer.File
+  file?: Express.Multer.File,
+  adminUserId?: number
 ) {
   const currentItem = await getItemById(id, true);
 
@@ -298,13 +300,39 @@ export async function updateItem(
     await deleteImage(currentItem.imagePublicId);
   }
 
-  return await getItemById(id, true);
+  const updatedItem = await getItemById(id, true);
+
+  void recordAuditLog({
+    actorUserId: adminUserId ?? null,
+    action: "UPDATE",
+    entityType: "item",
+    entityId: String(id),
+    beforeData: { name: currentItem.name, categoryId: currentItem.categoryId },
+    afterData: { name: updatedItem.name, categoryId: updatedItem.categoryId },
+  });
+
+  return updatedItem;
 }
 
-export async function setItemActiveStatus(id: number, isActive: boolean) {
-  await getItemById(id, true);
+export async function setItemActiveStatus(
+  id: number,
+  isActive: boolean,
+  adminUserId?: number
+) {
+  const before = await getItemById(id, true);
   await db.update(items).set({ isActive }).where(eq(items.id, id));
-  return await getItemById(id, true);
+  const after = await getItemById(id, true);
+
+  void recordAuditLog({
+    actorUserId: adminUserId ?? null,
+    action: isActive ? "UNARCHIVE" : "ARCHIVE",
+    entityType: "item",
+    entityId: String(id),
+    beforeData: { isActive: before.isActive },
+    afterData: { isActive: after.isActive },
+  });
+
+  return after;
 }
 
 export async function addUnitsToItem(itemId: number, input: AddUnitsInput) {

@@ -2,6 +2,7 @@ import { Router } from "express";
 import * as roomBookingController from "../controllers/room-booking.controller.js";
 import { authenticate, requireAdmin } from "../middlewares/auth.middleware.js";
 import { validateBody } from "../middlewares/validate.middleware.js";
+import { idempotency } from "../middlewares/idempotency.middleware.js";
 import { createRoomBookingSchema } from "../validators/room-booking.validator.js";
 
 const router = Router();
@@ -10,6 +11,7 @@ const router = Router();
 router.post(
   "/",
   authenticate,
+  idempotency("CREATE_ROOM_BOOKING"),
   validateBody(createRoomBookingSchema),
   roomBookingController.create
 );

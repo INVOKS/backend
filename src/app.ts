@@ -11,6 +11,8 @@ import itemUnitRoutes from "./routes/item-unit.routes.js";
 import itemBorrowingRoutes from "./routes/item-borrowing.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
 import profileRoutes from "./routes/profile.routes.js";
+import auditLogRoutes from "./routes/audit-log.routes.js";
+import systemSettingRoutes from "./routes/system-setting.routes.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
 
 const app = express();
@@ -74,6 +76,8 @@ app.use("/api/item-units", itemUnitRoutes);
 app.use("/api/item-borrowings", itemBorrowingRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/profile", profileRoutes);
+app.use("/api/audit-logs", auditLogRoutes);
+app.use("/api/system-settings", systemSettingRoutes);
 
 // Error handler diletakkan paling bawah setelah seluruh rute
 app.use(errorHandler);

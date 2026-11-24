@@ -65,7 +65,7 @@ export async function update(req: Request, res: Response): Promise<void> {
   const id = Number(req.params.id);
   const validated = updateRoomSchema.parse(req.body);
   // Upload dan DB update dikelola sepenuhnya di service (termasuk cleanup jika gagal)
-  const data = await roomService.updateRoom(id, validated, req.file);
+  const data = await roomService.updateRoom(id, validated, req.file, req.user?.id);
 
   res.status(200).json({
     success: true,
@@ -76,7 +76,7 @@ export async function update(req: Request, res: Response): Promise<void> {
 
 export async function archive(req: Request, res: Response): Promise<void> {
   const id = Number(req.params.id);
-  const data = await roomService.setRoomActiveStatus(id, false);
+  const data = await roomService.setRoomActiveStatus(id, false, req.user?.id);
 
   res.status(200).json({
     success: true,
@@ -87,7 +87,7 @@ export async function archive(req: Request, res: Response): Promise<void> {
 
 export async function unarchive(req: Request, res: Response): Promise<void> {
   const id = Number(req.params.id);
-  const data = await roomService.setRoomActiveStatus(id, true);
+  const data = await roomService.setRoomActiveStatus(id, true, req.user?.id);
 
   res.status(200).json({
     success: true,

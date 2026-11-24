@@ -1,6 +1,7 @@
 import "dotenv/config";
 import bcrypt from "bcrypt";
 import { pool } from "../src/db/index.js";
+import { ensureDefaultSystemSettings } from "../src/services/system-setting.service.js";
 
 async function seed() {
   try {
@@ -72,6 +73,10 @@ async function seed() {
         console.log(`Kategori '${c.name}' sudah ada (dilewati).`);
       }
     }
+
+    // 4. Seed Pengaturan Sistem Default (Tahap 09)
+    await ensureDefaultSystemSettings();
+    console.log("Pengaturan sistem default (Tahap 09) berhasil diinisialisasi.");
   } catch (error) {
     console.error("Gagal menjalankan seed:", error);
   } finally {

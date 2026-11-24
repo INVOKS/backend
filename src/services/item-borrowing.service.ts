@@ -18,6 +18,7 @@ import { users } from "../db/schema/users.js";
 import { AppError } from "../utils/app-error.js";
 import { isDuplicateKeyError } from "../utils/db-error.js";
 import { createEventNotification } from "./notification.service.js";
+import { recordAuditLog } from "./audit-log.service.js";
 import {
   getNowJakartaString,
   formatInputSlotToDbString,
@@ -476,6 +477,19 @@ export async function confirmItemBorrowingReturn(
     message: returnMsg,
     referenceType: "item_borrowing",
     referenceId: updatedBorrowing.id,
+  });
+
+  void recordAuditLog({
+    actorUserId: adminUserId,
+    action: "RETURN_CONFIRMED",
+    entityType: "item_borrowing",
+    entityId: String(borrowingId),
+    beforeData: null,
+    afterData: {
+      status: updatedBorrowing.status,
+      completedAt: updatedBorrowing.completedAt,
+      confirmedUnits: input.units,
+    },
   });
 
   return updatedBorrowing;
