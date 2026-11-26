@@ -14,6 +14,7 @@ import profileRoutes from "./routes/profile.routes.js";
 import auditLogRoutes from "./routes/audit-log.routes.js";
 import systemSettingRoutes from "./routes/system-setting.routes.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
+import { sendSuccess } from "./utils/response.js";
 
 const app = express();
 
@@ -49,17 +50,15 @@ app.use((req, _res, next) => {
 
 // Rute root (/) untuk mengecek server langsung dari browser
 app.get("/", (_req, res) => {
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Selamat datang di INVOKS API!",
-    health: "/api/health",
+    data: { health: "/api/health" },
   });
 });
 
 // Health check endpoint sesuai dokumentasi INVOKS
 app.get("/api/health", (_req, res) => {
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "INVOKS API is running!",
   });
 });

@@ -6,6 +6,7 @@ import {
   updateRoomSchema,
   setRoomFacilitiesSchema,
 } from "../validators/room.validator.js";
+import { sendSuccess } from "../utils/response.js";
 
 export async function list(req: Request, res: Response): Promise<void> {
   const isAdmin = req.user?.role === "admin";
@@ -26,8 +27,7 @@ export async function list(req: Request, res: Response): Promise<void> {
     onlyActive,
   });
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Daftar ruangan berhasil diambil",
     data,
   });
@@ -38,8 +38,7 @@ export async function detail(req: Request, res: Response): Promise<void> {
   const isAdmin = req.user?.role === "admin";
   const data = await roomService.getRoomById(id, !isAdmin);
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Detail ruangan berhasil diambil",
     data,
   });
@@ -54,8 +53,8 @@ export async function create(req: Request, res: Response): Promise<void> {
   // Upload dan DB insert dikelola sepenuhnya di service (termasuk cleanup jika gagal)
   const data = await roomService.createRoom(validated, req.file);
 
-  res.status(201).json({
-    success: true,
+  sendSuccess(res, {
+    statusCode: 201,
     message: "Ruangan berhasil ditambahkan",
     data,
   });
@@ -67,8 +66,7 @@ export async function update(req: Request, res: Response): Promise<void> {
   // Upload dan DB update dikelola sepenuhnya di service (termasuk cleanup jika gagal)
   const data = await roomService.updateRoom(id, validated, req.file, req.user?.id);
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Data ruangan berhasil diperbarui",
     data,
   });
@@ -78,8 +76,7 @@ export async function archive(req: Request, res: Response): Promise<void> {
   const id = Number(req.params.id);
   const data = await roomService.setRoomActiveStatus(id, false, req.user?.id);
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Ruangan berhasil diarsipkan",
     data,
   });
@@ -89,8 +86,7 @@ export async function unarchive(req: Request, res: Response): Promise<void> {
   const id = Number(req.params.id);
   const data = await roomService.setRoomActiveStatus(id, true, req.user?.id);
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Ruangan berhasil diaktifkan kembali",
     data,
   });
@@ -102,8 +98,7 @@ export async function setFacilities(req: Request, res: Response): Promise<void> 
 
   const data = await roomService.setRoomFacilities(id, validated);
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Fasilitas ruangan berhasil diperbarui",
     data,
   });

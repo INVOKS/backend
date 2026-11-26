@@ -3,6 +3,7 @@ import multer from "multer";
 import { AppError } from "../utils/app-error.js";
 import { ZodError } from "zod";
 import { MAX_UPLOAD_MB } from "./upload.middleware.js";
+import { sendError } from "../utils/response.js";
 
 export function errorHandler(
   err: unknown,
@@ -15,8 +16,8 @@ export function errorHandler(
     if (err.code === "LIMIT_FILE_SIZE") {
       message = `Ukuran file terlalu besar. Maksimal ${MAX_UPLOAD_MB} MB`;
     }
-    res.status(400).json({
-      success: false,
+    sendError(res, {
+      statusCode: 400,
       message,
     });
     return;
@@ -30,18 +31,18 @@ export function errorHandler(
     (err.message.includes("File size too large") ||
       err.message.includes("too many pixels") ||
       err.message.includes("Invalid image file") ||
-      err.constructor.name === "Error" && err.message.startsWith("Upload ke Cloudinary gagal"))
+      (err.constructor.name === "Error" && err.message.startsWith("Upload ke Cloudinary gagal")))
   ) {
-    res.status(400).json({
-      success: false,
+    sendError(res, {
+      statusCode: 400,
       message: "File gambar tidak valid atau terlalu besar untuk diproses",
     });
     return;
   }
 
   if (err instanceof AppError) {
-    res.status(err.statusCode).json({
-      success: false,
+    sendError(res, {
+      statusCode: err.statusCode,
       message: err.message,
     });
     return;
@@ -55,8 +56,8 @@ export function errorHandler(
         formattedErrors[path] = issue.message;
       }
     }
-    res.status(400).json({
-      success: false,
+    sendError(res, {
+      statusCode: 400,
       message: "Validasi data gagal",
       errors: formattedErrors,
     });
@@ -64,8 +65,8 @@ export function errorHandler(
   }
 
   console.error("Unhandled Error:", err);
-  res.status(500).json({
-    success: false,
+  sendError(res, {
+    statusCode: 500,
     message: "Terjadi kesalahan internal pada server",
   });
 }

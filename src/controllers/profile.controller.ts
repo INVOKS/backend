@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import * as profileService from "../services/profile.service.js";
 import { AppError } from "../utils/app-error.js";
+import { sendSuccess } from "../utils/response.js";
 import type {
   UpdateProfileInput,
   ChangePasswordInput,
@@ -13,8 +14,8 @@ export async function getProfile(req: Request, res: Response): Promise<void> {
 
   const profile = await profileService.getProfile(req.user.id);
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
+    statusCode: 200,
     data: profile,
   });
 }
@@ -32,8 +33,8 @@ export async function updateProfile(
     req.body as UpdateProfileInput
   );
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
+    statusCode: 200,
     message: "Profil berhasil diperbarui",
     data: profile,
   });
@@ -46,8 +47,8 @@ export async function updateAvatar(req: Request, res: Response): Promise<void> {
 
   const profile = await profileService.updateAvatar(req.user.id, req.file);
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
+    statusCode: 200,
     message: "Foto profil berhasil diperbarui",
     data: profile,
   });
@@ -66,8 +67,8 @@ export async function changePassword(
     req.body as ChangePasswordInput
   );
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
+    statusCode: 200,
     message: "Kata sandi berhasil diubah",
   });
 }

@@ -4,6 +4,7 @@ import type {
   CreateBuildingInput,
   UpdateBuildingInput,
 } from "../validators/building.validator.js";
+import { sendSuccess } from "../utils/response.js";
 
 export async function list(req: Request, res: Response): Promise<void> {
   const isAdmin = req.user?.role === "admin";
@@ -12,8 +13,7 @@ export async function list(req: Request, res: Response): Promise<void> {
 
   const data = await buildingService.getAllBuildings(onlyActive);
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Daftar gedung berhasil diambil",
     data,
   });
@@ -23,8 +23,7 @@ export async function detail(req: Request, res: Response): Promise<void> {
   const id = Number(req.params.id);
   const data = await buildingService.getBuildingById(id);
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Detail gedung berhasil diambil",
     data,
   });
@@ -33,8 +32,8 @@ export async function detail(req: Request, res: Response): Promise<void> {
 export async function create(req: Request, res: Response): Promise<void> {
   const data = await buildingService.createBuilding(req.body as CreateBuildingInput);
 
-  res.status(201).json({
-    success: true,
+  sendSuccess(res, {
+    statusCode: 201,
     message: "Gedung berhasil ditambahkan",
     data,
   });
@@ -47,8 +46,7 @@ export async function update(req: Request, res: Response): Promise<void> {
     req.body as UpdateBuildingInput
   );
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Data gedung berhasil diperbarui",
     data,
   });
@@ -58,8 +56,7 @@ export async function archive(req: Request, res: Response): Promise<void> {
   const id = Number(req.params.id);
   const data = await buildingService.setBuildingActiveStatus(id, false);
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Gedung berhasil diarsipkan",
     data,
   });
@@ -69,10 +66,8 @@ export async function unarchive(req: Request, res: Response): Promise<void> {
   const id = Number(req.params.id);
   const data = await buildingService.setBuildingActiveStatus(id, true);
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Gedung berhasil diaktifkan kembali",
     data,
   });
 }
-

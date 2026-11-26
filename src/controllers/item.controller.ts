@@ -10,6 +10,7 @@ import {
   itemFilterSchema,
 } from "../validators/item.validator.js";
 import { itemUnitAvailabilityQuerySchema } from "../validators/item-borrowing.validator.js";
+import { sendSuccess } from "../utils/response.js";
 
 function normalizeBodyKeys(body: unknown): unknown {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
@@ -25,8 +26,7 @@ function normalizeBodyKeys(body: unknown): unknown {
 export async function listCategories(_req: Request, res: Response): Promise<void> {
   const data = await itemService.getItemCategories();
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Daftar kategori barang berhasil diambil",
     data,
   });
@@ -44,8 +44,7 @@ export async function list(req: Request, res: Response): Promise<void> {
     onlyActive,
   });
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Daftar barang berhasil diambil",
     data,
   });
@@ -56,8 +55,7 @@ export async function detail(req: Request, res: Response): Promise<void> {
   const isAdmin = req.user?.role === "admin";
   const data = await itemService.getItemById(id, isAdmin);
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Detail barang berhasil diambil",
     data,
   });
@@ -71,8 +69,8 @@ export async function create(req: Request, res: Response): Promise<void> {
   const validated = createItemSchema.parse(normalizeBodyKeys(req.body));
   const data = await itemService.createItem(validated, req.file);
 
-  res.status(201).json({
-    success: true,
+  sendSuccess(res, {
+    statusCode: 201,
     message: "Barang berhasil ditambahkan",
     data,
   });
@@ -92,8 +90,7 @@ export async function update(req: Request, res: Response): Promise<void> {
   const validated = updateItemSchema.parse(normalizedBody);
   const data = await itemService.updateItem(id, validated, req.file, req.user?.id);
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Data barang berhasil diperbarui",
     data,
   });
@@ -103,8 +100,7 @@ export async function archive(req: Request, res: Response): Promise<void> {
   const id = Number(req.params.id);
   const data = await itemService.setItemActiveStatus(id, false, req.user?.id);
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Barang berhasil diarsipkan",
     data,
   });
@@ -114,8 +110,7 @@ export async function unarchive(req: Request, res: Response): Promise<void> {
   const id = Number(req.params.id);
   const data = await itemService.setItemActiveStatus(id, true, req.user?.id);
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Barang berhasil diaktifkan kembali",
     data,
   });
@@ -126,8 +121,8 @@ export async function addUnits(req: Request, res: Response): Promise<void> {
   const validated = addUnitsSchema.parse(normalizeBodyKeys(req.body));
   const data = await itemService.addUnitsToItem(id, validated);
 
-  res.status(201).json({
-    success: true,
+  sendSuccess(res, {
+    statusCode: 201,
     message: "Unit fisik berhasil ditambahkan ke barang",
     data,
   });
@@ -138,8 +133,7 @@ export async function updateUnit(req: Request, res: Response): Promise<void> {
   const validated = updateUnitSchema.parse(normalizeBodyKeys(req.body));
   const data = await itemService.updateItemUnit(id, validated);
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Data unit barang berhasil diperbarui",
     data,
   });
@@ -168,11 +162,8 @@ export async function getUnitAvailability(
     );
   }
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Data ketersediaan unit barang berhasil diambil",
     data,
   });
 }
-
-

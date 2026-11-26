@@ -4,12 +4,12 @@ import type {
   CreateFacilityInput,
   UpdateFacilityInput,
 } from "../validators/facility.validator.js";
+import { sendSuccess } from "../utils/response.js";
 
 export async function list(_req: Request, res: Response): Promise<void> {
   const data = await facilityService.getAllFacilities();
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Daftar fasilitas berhasil diambil",
     data,
   });
@@ -19,8 +19,7 @@ export async function detail(req: Request, res: Response): Promise<void> {
   const id = Number(req.params.id);
   const data = await facilityService.getFacilityById(id);
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Detail fasilitas berhasil diambil",
     data,
   });
@@ -29,8 +28,8 @@ export async function detail(req: Request, res: Response): Promise<void> {
 export async function create(req: Request, res: Response): Promise<void> {
   const data = await facilityService.createFacility(req.body as CreateFacilityInput);
 
-  res.status(201).json({
-    success: true,
+  sendSuccess(res, {
+    statusCode: 201,
     message: "Fasilitas berhasil ditambahkan",
     data,
   });
@@ -43,8 +42,7 @@ export async function update(req: Request, res: Response): Promise<void> {
     req.body as UpdateFacilityInput
   );
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Data fasilitas berhasil diperbarui",
     data,
   });
@@ -54,9 +52,7 @@ export async function remove(req: Request, res: Response): Promise<void> {
   const id = Number(req.params.id);
   await facilityService.deleteFacility(id);
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Fasilitas berhasil dihapus",
   });
 }
-

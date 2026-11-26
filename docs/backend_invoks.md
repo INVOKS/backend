@@ -497,7 +497,7 @@ Notifikasi **tidak diinput manual** oleh admin atau user. Backend yang membuatny
 ### Tahap 09 — Tabel pendukung (opsional)
 
 - **Tabel Baru (Migrasi `0010_brief_abomination`):**
-  - **`audit_logs`**:
+    - **`audit_logs`**:
     - `id` (int PK autoIncrement)
     - `actor_user_id` (int nullable, FK -> `users.id` ON DELETE set null)
     - `action` (varchar 100 notNull, misal: `"CREATE"`, `"UPDATE"`, `"ARCHIVE"`, `"UNARCHIVE"`, `"RETURN_CONFIRMED"`, `"UPDATE_SETTING"`)
@@ -563,10 +563,30 @@ File terkait: `src/config/cloudinary.ts`, `src/services/storage.service.ts`, `sr
 | `CLOUDINARY_CLOUD_NAME` | Harus cocok dengan akun pemilik API key |
 | `CLOUDINARY_API_KEY` | Jangan ditampilkan atau di-commit |
 | `CLOUDINARY_API_SECRET` | Jangan ditampilkan atau di-commit |
-| `MAX_UPLOAD_MB` | Batas ukuran upload; default 5 jika kosong, bukan angka, atau di bawah 1; maksimum 10 (batas gambar paket Free) |
+| `MAX_UPLOAD_MB` | Batas ukuran upload; default 1 jika kosong, bukan angka, atau di bawah 1; maksimum 1 (dibatasi 1 MB) |
+
+**Penyeragaman Format Respons JSON (`src/utils/response.ts`):**
+- Seluruh endpoint API menggunakan helper terpusat `sendSuccess` dan `sendError`.
+- Format respons sukses seragam:
+  ```json
+  {
+    "success": true,
+    "message": "Pesan deskriptif",
+    "data": { ... },
+    "meta": { ... }
+  }
+  ```
+- Format respons error seragam (ditangani oleh `error.middleware.ts`, `validate.middleware.ts`, `idempotency.middleware.ts`):
+  ```json
+  {
+    "success": false,
+    "message": "Pesan error jelas",
+    "errors": { ... }
+  }
+  ```
 
 **Aturan upload:**
-- Tipe file: jpg, png, webp. Penyimpanan sementara memakai multer `memoryStorage`, jadi tidak ada file yang ditulis ke disk. Field form-data bernama `image`.
+- Tipe file: jpg, jpeg, png, webp. Maksimal 1 MB (`1 * 1024 * 1024` bytes). Penyimpanan sementara memakai multer `memoryStorage`, jadi tidak ada file yang ditulis ke disk. Field form-data bernama `image` (atau `avatar` pada profil).
 - Pesan error ukuran menyebut batas yang sedang berlaku. Error ukuran atau jumlah piksel dari Cloudinary dikembalikan sebagai 400, bukan 500.
 - `uploadImage(buffer, mimetype, folder)` mengembalikan `{ url, publicId }` (`secure_url` https). Folder ditentukan lewat `asset_folder` (akun memakai Dynamic folders), contohnya `invoks/rooms`.
 - `public_id` disimpan **persis** seperti respons upload, tidak disusun sendiri.
@@ -619,7 +639,7 @@ File terkait: `src/config/cloudinary.ts`, `src/services/storage.service.ts`, `sr
 ## 8. Catatan untuk Frontend (fe-web dan Flutter)
 
 - **Respons user** memakai field `fullName`, `phone`, `profileImageUrl`, `dateOfBirth`, `department`, `userType`, `academicId`, `buildingId`, `isActive`. Request register memakai `fullName`, `confirmPassword`, dan `rememberMe` (login). Nilai enum database: `female`/`male` (gender) dan `available`/`borrowed`/`maintenance` (status ruangan). `userType` bukan enum database (string bebas); frontend memakai `student`/`lecturer`/`staff`.
-- **Upload foto:** multipart dengan field `image`, maksimal 5 MB, jpg/png/webp.
+- **Upload foto:** multipart dengan field `image` (atau `avatar`), maksimal 1 MB, jpg/jpeg/png/webp.
 - **Waktu booking:** kirim tiap slot satu jam (`startAt` berformat `YYYY-MM-DDTHH:mm`). Tampilan boleh menggabungkan slot berurutan (misalnya 13.00 - 17.00), tetapi request tetap per jam. Ambil jam langsung dari teks respons (`substring`) agar tidak bergantung zona waktu perangkat, dan konversi `createdAt` (UTC) ke WIB.
 - **Warna kalender bulanan:** `open` (putih), `limited` (kuning), `full` (merah), `past` (abu/nonaktif). Slot abu di layar pilih jam berarti `booked` atau `past`.
 - **Alamat backend di emulator Android:** `10.0.2.2` (bukan `localhost`).

@@ -6,6 +6,7 @@ import {
   itemBorrowingFilterSchema,
   returnItemBorrowingUnitsSchema,
 } from "../validators/item-borrowing.validator.js";
+import { sendSuccess } from "../utils/response.js";
 
 export async function create(req: Request, res: Response): Promise<void> {
   const userId = req.user?.id;
@@ -16,8 +17,8 @@ export async function create(req: Request, res: Response): Promise<void> {
   const validated = createItemBorrowingSchema.parse(req.body);
   const data = await itemBorrowingService.createItemBorrowing(userId, validated);
 
-  res.status(201).json({
-    success: true,
+  sendSuccess(res, {
+    statusCode: 201,
     message: "Peminjaman barang berhasil diajukan",
     data,
   });
@@ -31,8 +32,7 @@ export async function myBorrowings(req: Request, res: Response): Promise<void> {
 
   const data = await itemBorrowingService.getMyItemBorrowings(userId);
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Daftar peminjaman barang saya berhasil diambil",
     data,
   });
@@ -42,8 +42,7 @@ export async function listAll(req: Request, res: Response): Promise<void> {
   const filter = itemBorrowingFilterSchema.parse(req.query);
   const data = await itemBorrowingService.getAllItemBorrowings(filter);
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Daftar semua peminjaman barang berhasil diambil",
     data,
   });
@@ -61,8 +60,7 @@ export async function detail(req: Request, res: Response): Promise<void> {
     role: user.role,
   });
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Detail peminjaman barang berhasil diambil",
     data,
   });
@@ -89,8 +87,7 @@ export async function confirmReturn(
     validated
   );
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Pengembalian unit barang berhasil dikonfirmasi",
     data,
   });

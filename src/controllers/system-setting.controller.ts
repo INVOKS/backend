@@ -2,12 +2,13 @@ import type { Request, Response } from "express";
 import * as systemSettingService from "../services/system-setting.service.js";
 import { AppError } from "../utils/app-error.js";
 import type { UpdateSystemSettingInput } from "../validators/system-setting.validator.js";
+import { sendSuccess } from "../utils/response.js";
 
 export async function list(_req: Request, res: Response): Promise<void> {
   const settings = await systemSettingService.getAllSystemSettings();
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
+    message: "Daftar pengaturan sistem berhasil diambil",
     data: settings,
   });
 }
@@ -16,8 +17,8 @@ export async function detail(req: Request, res: Response): Promise<void> {
   const key = req.params.key as string;
   const setting = await systemSettingService.getSystemSettingByKey(key);
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
+    message: "Detail pengaturan sistem berhasil diambil",
     data: setting,
   });
 }
@@ -34,8 +35,7 @@ export async function update(req: Request, res: Response): Promise<void> {
     req.body as UpdateSystemSettingInput
   );
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: `Pengaturan sistem '${key}' berhasil diperbarui`,
     data: updated,
   });

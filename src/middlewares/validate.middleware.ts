@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { type ZodType, ZodError } from "zod";
+import { sendError } from "../utils/response.js";
 
 export function validateBody<T>(schema: ZodType<T>) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -16,8 +17,8 @@ export function validateBody<T>(schema: ZodType<T>) {
             formattedErrors[path] = issue.message;
           }
         }
-        res.status(400).json({
-          success: false,
+        sendError(res, {
+          statusCode: 400,
           message: "Validasi data gagal",
           errors: formattedErrors,
         });
@@ -50,8 +51,8 @@ export function validateQuery<T>(schema: ZodType<T>) {
             formattedErrors[path] = issue.message;
           }
         }
-        res.status(400).json({
-          success: false,
+        sendError(res, {
+          statusCode: 400,
           message: "Validasi parameter kueri gagal",
           errors: formattedErrors,
         });

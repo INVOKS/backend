@@ -6,6 +6,7 @@ import {
   roomBookingFilterSchema,
   roomAvailabilityQuerySchema,
 } from "../validators/room-booking.validator.js";
+import { sendSuccess } from "../utils/response.js";
 
 export async function create(req: Request, res: Response): Promise<void> {
   const userId = req.user?.id;
@@ -16,8 +17,8 @@ export async function create(req: Request, res: Response): Promise<void> {
   const validated = createRoomBookingSchema.parse(req.body);
   const data = await roomBookingService.createBooking(userId, validated);
 
-  res.status(201).json({
-    success: true,
+  sendSuccess(res, {
+    statusCode: 201,
     message: "Peminjaman ruangan berhasil diajukan",
     data,
   });
@@ -31,8 +32,7 @@ export async function myBookings(req: Request, res: Response): Promise<void> {
 
   const data = await roomBookingService.getMyBookings(userId);
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Daftar peminjaman saya berhasil diambil",
     data,
   });
@@ -42,8 +42,7 @@ export async function listAll(req: Request, res: Response): Promise<void> {
   const filter = roomBookingFilterSchema.parse(req.query);
   const data = await roomBookingService.getAllBookings(filter);
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Daftar semua peminjaman ruangan berhasil diambil",
     data,
   });
@@ -62,8 +61,7 @@ export async function detail(req: Request, res: Response): Promise<void> {
     throw new AppError(403, "Anda tidak memiliki akses ke data peminjaman ini");
   }
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Detail peminjaman ruangan berhasil diambil",
     data: booking,
   });
@@ -89,10 +87,8 @@ export async function availability(req: Request, res: Response): Promise<void> {
     );
   }
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Data ketersediaan ruangan berhasil diambil",
     data,
   });
 }
-

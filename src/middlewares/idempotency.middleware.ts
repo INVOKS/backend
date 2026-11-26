@@ -4,6 +4,7 @@ import { eq, and, gt } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { idempotencyRequests } from "../db/schema/idempotency-requests.js";
 import { AppError } from "../utils/app-error.js";
+import { sendError } from "../utils/response.js";
 
 /**
  * Middleware idempotency opsional.
@@ -71,8 +72,8 @@ export function idempotency(operation: string) {
     const existing = existingRows[0];
     if (existing) {
       if (existing.requestHash !== requestHash) {
-        res.status(409).json({
-          success: false,
+        sendError(res, {
+          statusCode: 409,
           message:
             "Idempotency-Key sudah digunakan dengan payload permintaan yang berbeda",
         });

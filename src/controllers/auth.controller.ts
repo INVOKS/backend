@@ -1,13 +1,14 @@
 import type { Request, Response } from "express";
 import * as authService from "../services/auth.service.js";
 import { AppError } from "../utils/app-error.js";
+import { sendSuccess } from "../utils/response.js";
 import type { RegisterInput, LoginInput } from "../validators/auth.validator.js";
 
 export async function register(req: Request, res: Response): Promise<void> {
   const user = await authService.registerUser(req.body as RegisterInput);
 
-  res.status(201).json({
-    success: true,
+  sendSuccess(res, {
+    statusCode: 201,
     message: "Registrasi pengguna berhasil",
     data: { user },
   });
@@ -19,8 +20,8 @@ export async function login(req: Request, res: Response): Promise<void> {
     "user"
   );
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
+    statusCode: 200,
     message: "Login berhasil",
     data: { token, user },
   });
@@ -32,8 +33,8 @@ export async function loginAdmin(req: Request, res: Response): Promise<void> {
     "admin"
   );
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
+    statusCode: 200,
     message: "Login admin berhasil",
     data: { token, user },
   });
@@ -46,8 +47,8 @@ export async function me(req: Request, res: Response): Promise<void> {
 
   const user = await authService.getUserById(req.user.id);
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
+    statusCode: 200,
     message: "Data profil berhasil diambil",
     data: { user },
   });
@@ -55,13 +56,16 @@ export async function me(req: Request, res: Response): Promise<void> {
 
 export async function forgotPassword(req: Request, res: Response): Promise<void> {
   const result = await authService.forgotPassword(req.body);
-  res.status(200).json(result);
+  sendSuccess(res, {
+    statusCode: 200,
+    message: result.message,
+  });
 }
 
 export async function verifyResetOtp(req: Request, res: Response): Promise<void> {
   const result = await authService.verifyResetOtp(req.body);
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
+    statusCode: 200,
     message: "Kode OTP berhasil diverifikasi",
     data: result,
   });
@@ -69,5 +73,8 @@ export async function verifyResetOtp(req: Request, res: Response): Promise<void>
 
 export async function resetPassword(req: Request, res: Response): Promise<void> {
   const result = await authService.resetPassword(req.body);
-  res.status(200).json(result);
+  sendSuccess(res, {
+    statusCode: 200,
+    message: result.message,
+  });
 }
